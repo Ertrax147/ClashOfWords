@@ -1,0 +1,26 @@
+name: clash_of_words
+description: "Clash of Words: educational card game for Android tablets."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+workspace:
+  - packages/game_engine
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.3.2
+  game_engine:
+    path: packages/game_engine
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

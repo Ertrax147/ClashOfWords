@@ -36,28 +36,21 @@ sealed class GameCard {
 /// Carta que se enfrenta a otra en un Clash (RF-04).
 ///
 /// En un Clash se compara primero la Rarity ([rarity]), luego la Class
-/// ([classes]) y por último el Power ([power]). Una Creature permanece en juego durante [duration]
-/// Clashes mientras siga ganando.
+/// ([cardClass]) y por último el Power ([power]). Una Creature permanece en
+/// juego durante [duration] Clashes mientras siga ganando.
 final class Creature extends GameCard {
   /// Crea una Creature.
   ///
-  /// Lanza un [ArgumentError] si [classes] está vacío o si [power] está fuera
-  /// del rango de [minPower] a [maxPower].
+  /// Lanza un [ArgumentError] si [power] está fuera del rango de [minPower]
+  /// a [maxPower].
   Creature({
     required super.id,
     required super.name,
     required this.rarity,
-    required Set<CardClass> classes,
+    required this.cardClass,
     required this.power,
     this.duration = ClashDuration.one,
-  }) : classes = Set.unmodifiable(classes) {
-    if (classes.isEmpty) {
-      throw ArgumentError.value(
-        classes,
-        'classes',
-        'A creature needs at least one class',
-      );
-    }
+  }) {
     if (power < minPower || power > maxPower) {
       throw ArgumentError.value(
         power,
@@ -76,8 +69,9 @@ final class Creature extends GameCard {
   /// Rarity de la Creature.
   final Rarity rarity;
 
-  /// Class de la Creature. Siempre tiene al menos una.
-  final Set<CardClass> classes;
+  /// Class de la Creature. Cada Creature tiene exactamente una; los Items,
+  /// en cambio, pueden tener varias.
+  final CardClass cardClass;
 
   /// Power impreso en la carta, sin modificadores de Items ni Effects.
   final int power;
@@ -143,13 +137,14 @@ final class Item extends GameCard {
 
   /// Indica si este Item puede equiparse a [creature] según su Class.
   ///
-  /// Un Item universal sirve para cualquier Creature. Si no, la Creature
-  /// debe compartir al menos una Class con el Item (RF-10).
+  /// Un Item universal sirve para cualquier Creature. Si no, la Class de la
+  /// Creature debe estar entre las Class del Item (RF-10). Por ejemplo,
+  /// Invisible Coat (Magical y Secret) sirve para una Creature Magical.
   ///
   /// Solo revisa la Class: que la Creature no tenga ya otro Item equipado y
   /// las restricciones de las habilidades se validan durante la partida.
   bool canBeEquippedTo(Creature creature) =>
-      isUniversal || classes.any(creature.classes.contains);
+      isUniversal || classes.contains(creature.cardClass);
 }
 
 /// Carta que cambia las reglas del juego durante algunos Clashes (RF-10).

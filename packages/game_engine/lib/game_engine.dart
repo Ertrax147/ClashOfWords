@@ -8,3 +8,5 @@ export 'src/entities/card_class.dart';
 export 'src/entities/clash_duration.dart';
 export 'src/entities/game_card.dart';
 export 'src/entities/rarity.dart';
+export 'src/rules/clash_resolver.dart';
+export 'src/rules/clash_stats.dart';

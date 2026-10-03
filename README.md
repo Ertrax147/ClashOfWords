@@ -21,7 +21,7 @@ flutter doctor
 ## Cómo empezar
 
 ```bash
-git clone <url-del-repositorio>
+git clone https://github.com/Ertrax147/ClashOfWords.git
 cd ClashOfWords
 flutter pub get
 flutter run

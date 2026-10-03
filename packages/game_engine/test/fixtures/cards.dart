@@ -145,6 +145,47 @@ final flagsJacket = Item(
   powerBonus: 4,
 );
 
+final economic = CardClass('Economic');
+final social = CardClass('Social');
+final artist = CardClass('Artist');
+
+final relaxingMarkers = Creature(
+  id: 'relaxing-markers',
+  name: 'Relaxing Markers',
+  rarity: Rarity.common,
+  cardClass: artist,
+  power: 3,
+);
+
+final universesEye = Creature(
+  id: 'universes-eye',
+  name: "Universe's Eye",
+  rarity: Rarity.legendary,
+  cardClass: cosmic,
+  power: 9,
+  duration: ClashDuration(2),
+  abilities: [ForbidEnemyPlays(effects: true)],
+);
+
+final galaxyDragonWithAbility = Creature(
+  id: 'galaxy-dragon',
+  name: 'Galaxy Dragon',
+  rarity: Rarity.legendary,
+  cardClass: cosmic,
+  power: 9,
+  duration: ClashDuration(3),
+  abilities: [ForbidEnemyPlays(items: true)],
+);
+
+final giftOfEternity = Item(
+  id: 'gift-of-eternity',
+  name: 'Gift of Eternity',
+  rarity: Rarity.legendary,
+  powerBonus: 0,
+  grantedDuration: ClashDuration.infinite,
+  forbiddenRarities: {Rarity.legendary},
+);
+
 // Effects
 
 final huggingHospital = Effect(
@@ -152,6 +193,58 @@ final huggingHospital = Effect(
   name: 'Hugging Hospital',
   rarity: Rarity.rare,
   duration: ClashDuration(5),
+  abilities: [StatModifier(target: AbilityTarget.own, powerDelta: 2)],
+);
+
+final closetBuilding = Effect(
+  id: 'closet-building',
+  name: 'Closet Building',
+  rarity: Rarity.common,
+  duration: ClashDuration(2),
+  abilities: [
+    StatModifier(
+      target: AbilityTarget.own,
+      filter: CreatureFilter(classes: {economic}),
+      powerDelta: 3,
+    ),
+  ],
+);
+
+final uglyTheater = Effect(
+  id: 'ugly-theater',
+  name: 'Ugly Theater',
+  rarity: Rarity.common,
+  duration: ClashDuration(1),
+  abilities: [
+    DiscardEnemyCreatures(CreatureFilter(classes: {artist})),
+  ],
+);
+
+final orangeStars = Effect(
+  id: 'orange-stars',
+  name: 'Orange Stars',
+  rarity: Rarity.legendary,
+  duration: ClashDuration(4),
+  abilities: [
+    StatModifier(target: AbilityTarget.own, rarity: Rarity.legendary),
+  ],
+);
+
+final classroomCleaning = Effect(
+  id: 'classroom-cleaning',
+  name: 'Classroom Cleaning',
+  rarity: Rarity.uncommon,
+  duration: ClashDuration(3),
+  abilities: [
+    StatModifier(
+      target: AbilityTarget.own,
+      filter: CreatureFilter(
+        classes: {smart, social},
+        rarities: {Rarity.common},
+      ),
+      rarity: Rarity.uncommon,
+    ),
+  ],
 );
 
 // Initial Effects

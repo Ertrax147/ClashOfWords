@@ -9,7 +9,7 @@ void main() {
       final stats = ClashStats.of(unicornQueen);
 
       expect(stats.rarity, Rarity.legendary);
-      expect(stats.cardClass, wild);
+      expect(stats.classes, {wild});
       expect(stats.power, 8);
     });
 
@@ -36,7 +36,7 @@ void main() {
       // Invisible Coat es Magical y Secret; la Creature sigue siendo Magical.
       final stats = ClashStats.of(lightPhoenix, item: invisibleCoat);
 
-      expect(stats.cardClass, magical);
+      expect(stats.classes, {magical});
     });
 
     test('rejects an item that cannot be equipped to the creature', () {

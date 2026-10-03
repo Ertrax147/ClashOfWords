@@ -20,7 +20,7 @@ enum WinReason {
 
 /// Motivo por el que un Clash termina en Tie.
 enum TieReason {
-  /// Tenían igual Rarity y la misma Class.
+  /// Tenían igual Rarity y compartían una Class.
   sameClass,
 
   /// Tenían igual Rarity, distinta Class e igual Power.
@@ -87,7 +87,8 @@ final class ClashTie extends ClashResult {
 /// Orden de resolución:
 /// 1. Si tienen distinta Rarity, gana la mayor.
 /// 2. Si tienen igual Rarity y la misma Class (por ejemplo, Wild contra
-///    Wild), hay Tie, sin importar el Power.
+///    Wild), hay Tie, sin importar el Power. Si un Effect les agregó Class,
+///    basta con que compartan una.
 /// 3. Si tienen igual Rarity y distinta Class, gana el mayor Power; con
 ///    igual Power, hay Tie.
 ///
@@ -101,7 +102,7 @@ ClashResult resolveClash(ClashStats first, ClashStats second) {
     return ClashWin(winner, WinReason.rarity);
   }
 
-  if (first.cardClass == second.cardClass) {
+  if (first.sharesClassWith(second)) {
     return const ClashTie(TieReason.sameClass);
   }
 

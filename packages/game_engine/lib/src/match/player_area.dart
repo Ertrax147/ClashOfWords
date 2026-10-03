@@ -2,10 +2,11 @@ import 'package:meta/meta.dart';
 
 import '../entities/game_card.dart';
 import 'creature_in_play.dart';
+import 'effect_in_play.dart';
 import 'match_card.dart';
 
-/// Zona de juego de un jugador: sus pilas, su Initial Effect y su Creature
-/// en juego.
+/// Zona de juego de un jugador: sus pilas, su Initial Effect, su Creature
+/// en juego y sus Effects en juego.
 ///
 /// Las listas que expone son de solo lectura. Los métodos que mueven cartas
 /// son `@internal`: solo la partida puede usarlos, porque es la que aplica
@@ -22,6 +23,7 @@ final class PlayerArea {
   final List<MatchCard> _discardStack = [];
   final List<MatchCard> _trophyStack = [];
   final List<MatchCard> _tiedCards = [];
+  final List<EffectInPlay> _effectsInPlay = [];
   CreatureInPlay? _creatureInPlay;
 
   /// Initial Effect del jugador, en juego desde el inicio de la partida.
@@ -47,14 +49,44 @@ final class PlayerArea {
   /// juego hasta que un nuevo Clash defina a quién le corresponden (CU-04).
   List<MatchCard> get tiedCards => List.unmodifiable(_tiedCards);
 
+  /// Effects que el jugador jugó y siguen en juego, en el orden en que se
+  /// jugaron.
+  List<EffectInPlay> get effectsInPlay => List.unmodifiable(_effectsInPlay);
+
   /// Saca la carta superior del Deck, o devuelve `null` si está vacío.
   @internal
   MatchCard? drawTop() => _deck.isEmpty ? null : _deck.removeAt(0);
 
-  /// Pone a [creature] en la mesa.
+  /// Pone a [creature] en la mesa. [order] indica en qué momento de la
+  /// partida entró.
   @internal
-  void putInPlay(MatchCard<Creature> creature) =>
-      _creatureInPlay = CreatureInPlay(creature);
+  void putInPlay(MatchCard<Creature> creature, {int order = 0}) =>
+      _creatureInPlay = CreatureInPlay(creature, order: order);
+
+  /// Pone en juego a [effect], que ya salió de la Hand.
+  @internal
+  void addEffectInPlay(EffectInPlay effect) => _effectsInPlay.add(effect);
+
+  /// Descuenta un Clash a cada Effect en juego y devuelve las cartas de los
+  /// que se agotaron, que dejan de estar en juego.
+  @internal
+  List<MatchCard> spendEffectsClash() {
+    for (final effect in _effectsInPlay) {
+      effect.spendClash();
+    }
+    final exhausted = _effectsInPlay.where((effect) => effect.isExhausted);
+    final cards = [for (final effect in exhausted) effect.effect];
+    _effectsInPlay.removeWhere((effect) => effect.isExhausted);
+    return cards;
+  }
+
+  /// Saca todos los Effects en juego y devuelve sus cartas.
+  @internal
+  List<MatchCard> takeEffectsInPlay() {
+    final cards = [for (final effect in _effectsInPlay) effect.effect];
+    _effectsInPlay.clear();
+    return cards;
+  }
 
   /// Saca de la mesa a la Creature en juego y devuelve sus cartas: la
   /// Creature y su Item, si tiene.

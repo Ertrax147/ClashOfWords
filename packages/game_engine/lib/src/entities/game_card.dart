@@ -1,3 +1,4 @@
+import 'ability.dart';
 import 'card_class.dart';
 import 'clash_duration.dart';
 import 'rarity.dart';
@@ -8,8 +9,9 @@ import 'rarity.dart';
 /// [Effect] e [InitialEffect]. Es `sealed`, así que un `switch` sobre una
 /// [GameCard] obliga a contemplar los cuatro tipos.
 ///
-/// Estas clases describen la carta tal como está impresa (sus atributos
-/// fijos). Las habilidades se agregan en una etapa posterior del motor.
+/// Estas clases describen la carta tal como está impresa: sus atributos y
+/// sus habilidades ([Ability]). Las habilidades de los Initial Effects se
+/// agregan en una etapa posterior del motor.
 ///
 /// Se llama `GameCard` y no `Card` para no chocar con el widget `Card` de
 /// Flutter en las pantallas que importen ambos.
@@ -50,7 +52,8 @@ final class Creature extends GameCard {
     required this.cardClass,
     required this.power,
     this.duration = ClashDuration.one,
-  }) {
+    List<Ability> abilities = const [],
+  }) : abilities = List.unmodifiable(abilities) {
     if (power < minPower || power > maxPower) {
       throw ArgumentError.value(
         power,
@@ -78,6 +81,10 @@ final class Creature extends GameCard {
 
   /// Cuántos Clashes permanece en juego. Por defecto, uno.
   final ClashDuration duration;
+
+  /// Habilidades que actúan mientras la Creature está en la mesa, por
+  /// ejemplo Universe's Eye: "Your enemy cannot play Effects".
+  final List<Ability> abilities;
 }
 
 /// Carta que se equipa a una Creature para mejorarla (RF-10).
@@ -98,7 +105,9 @@ final class Item extends GameCard {
     required this.powerBonus,
     this.grantedRarity,
     this.grantedDuration,
-  }) : classes = Set.unmodifiable(classes) {
+    Set<Rarity> forbiddenRarities = const {},
+  }) : classes = Set.unmodifiable(classes),
+       forbiddenRarities = Set.unmodifiable(forbiddenRarities) {
     if (powerBonus < 0) {
       throw ArgumentError.value(
         powerBonus,
@@ -129,10 +138,16 @@ final class Item extends GameCard {
   /// Pan: "Your creature get Duration: 3 clashes".
   final ClashDuration? grantedDuration;
 
+  /// Rarity de las Creatures que no pueden usar este Item.
+  ///
+  /// Por ejemplo, Gift of Eternity: "Legendary creatures cannot use this
+  /// item". La partida lo valida con la Rarity efectiva de la Creature.
+  final Set<Rarity> forbiddenRarities;
+
   /// Indica si el Item puede equiparse a cualquier Creature.
   ///
-  /// Los Items sin Class son universales; en las cartas actuales son los
-  /// Epic y Legendary.
+  /// Los Items sin Class son universales; en las cartas revisadas hay Items
+  /// Rare, Epic y Legendary sin Class.
   bool get isUniversal => classes.isEmpty;
 
   /// Indica si este Item puede equiparse a [creature] según su Class.
@@ -158,14 +173,18 @@ final class Effect extends GameCard {
     required super.name,
     required this.rarity,
     required this.duration,
-  });
+    List<Ability> abilities = const [],
+  }) : abilities = List.unmodifiable(abilities);
 
   /// Rarity del Effect. Determina su probabilidad en los sobres, no compite
   /// en el Clash.
   final Rarity rarity;
 
-  /// Cuántos Clashes permanece en juego.
+  /// Cuántos Clashes permanece en juego, contando el Clash en que se juega.
   final ClashDuration duration;
+
+  /// Habilidades que actúan mientras el Effect está en juego.
+  final List<Ability> abilities;
 }
 
 /// Carta única de cada jugador que permanece en juego toda la partida

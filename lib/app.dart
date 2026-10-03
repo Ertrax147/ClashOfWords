@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'features/home/presentation/home_screen.dart';
+
+/// Raíz de la app: tema y pantalla inicial.
 class ClashOfWordsApp extends StatelessWidget {
+  /// Crea la app.
   const ClashOfWordsApp({super.key});
 
   @override
@@ -9,9 +13,12 @@ class ClashOfWordsApp extends StatelessWidget {
       title: 'Clash of Words',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.indigo,
+          brightness: Brightness.dark,
+        ),
       ),
-      home: const Scaffold(body: Center(child: Text('Clash of Words'))),
+      home: const HomeScreen(),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../rules/clash_resolver.dart';
 import '../rules/clash_resolver.dart' as rules show resolveClash;
 import '../rules/clash_stats.dart';
 import 'effect_in_play.dart';
+import 'initial_effect_choice.dart';
 import 'match_card.dart';
 import 'player.dart';
 import 'player_area.dart';
@@ -82,6 +83,14 @@ enum InvalidPlayReason {
   /// El Initial Effect del jugador no tiene una habilidad activa que pueda
   /// usar.
   noActiveAbility,
+
+  /// La habilidad activa no tiene sobre qué actuar, por ejemplo Recycle sin
+  /// Creatures en el Discard Stack.
+  noValidTarget,
+
+  /// La elección del jugador no corresponde a la habilidad, o no está entre
+  /// las opciones ([GameMatch.activeOptions]).
+  invalidChoice,
 }
 
 /// Error que se produce al intentar una jugada no permitida.
@@ -166,12 +175,15 @@ final class GameMatch {
     return GameMatch._({
       Player.one: areaFor(Player.one, playerOne),
       Player.two: areaFor(Player.two, playerTwo),
-    });
+    }, random ?? Random());
   }
 
-  GameMatch._(this._areas);
+  GameMatch._(this._areas, this._random);
 
   final Map<Player, PlayerArea> _areas;
+
+  /// Azar con que se barajan los Decks cuando una habilidad lo pide.
+  final Random _random;
   MatchPhase _phase = MatchPhase.reveal;
 
   /// Contador que marca el orden en que entran en juego Creatures y
@@ -255,15 +267,80 @@ final class GameMatch {
   /// Indica si [player] ya usó la habilidad activa de su Initial Effect.
   bool hasUsedActive(Player player) => _activeUsed.contains(player);
 
+  /// Cartas entre las que [player] puede elegir al usar su habilidad
+  /// activa, para las habilidades que piden elegir una carta.
+  ///
+  /// - Recycle: las Creatures de su Discard Stack.
+  /// - Responsibility: los Items de su Discard Stack.
+  ///
+  /// Está vacía si la habilidad no pide elegir una carta o no hay opciones.
+  /// La interfaz la usa para armar el selector.
+  List<MatchCard> activeOptions(Player player) {
+    final discard = area(player).discardStack;
+    return switch (activeKindOf(player)) {
+      InitialEffectKind.recycle =>
+        discard.whereType<MatchCard<Creature>>().toList(),
+      InitialEffectKind.responsibility =>
+        discard.whereType<MatchCard<Item>>().toList(),
+      _ => const [],
+    };
+  }
+
   /// Indica por qué [player] no puede usar la habilidad activa de su
   /// Initial Effect, o `null` si sí puede.
   ///
-  /// Sirve para que la interfaz desactive el botón.
-  InvalidPlayReason? checkUseInitialEffect(Player player) {
+  /// Sin [choice] solo comprueba que pueda usarla ahora; sirve para que la
+  /// interfaz desactive el botón. Con [choice] comprueba además que la
+  /// elección sea válida.
+  InvalidPlayReason? checkUseInitialEffect(
+    Player player, [
+    InitialEffectChoice? choice,
+  ]) {
     if (_phase != MatchPhase.play) return InvalidPlayReason.wrongPhase;
-    if (activeKindOf(player) == null) return InvalidPlayReason.noActiveAbility;
+    final kind = activeKindOf(player);
+    if (kind == null) return InvalidPlayReason.noActiveAbility;
     if (hasUsedActive(player)) return InvalidPlayReason.alreadyUsed;
+    switch (kind) {
+      case InitialEffectKind.recycle || InitialEffectKind.responsibility:
+        final options = activeOptions(player);
+        if (options.isEmpty) return InvalidPlayReason.noValidTarget;
+        if (choice != null &&
+            !(choice is CardChoice && options.contains(choice.card))) {
+          return InvalidPlayReason.invalidChoice;
+        }
+      default:
+        break;
+    }
     return null;
+  }
+
+  /// [player] usa la habilidad activa de su Initial Effect (RF-10, CU-09).
+  ///
+  /// Solo se puede una vez por partida, durante la fase de jugar.
+  /// - Recycle: [choice] es la Creature de su Discard Stack que vuelve al
+  ///   Deck.
+  /// - Responsibility: [choice] es el Item de su Discard Stack que vuelve al
+  ///   Deck.
+  ///
+  /// Lanza un [InvalidPlayException] si la jugada no está permitida (ver
+  /// [checkUseInitialEffect]).
+  void useInitialEffect(
+    Player player, [
+    InitialEffectChoice choice = const NoChoice(),
+  ]) {
+    final reason = checkUseInitialEffect(player, choice);
+    if (reason != null) throw InvalidPlayException(reason);
+    switch (activeKindOf(player)!) {
+      case InitialEffectKind.recycle || InitialEffectKind.responsibility:
+        // La validación garantiza que es una CardChoice del Discard Stack.
+        final card = (choice as CardChoice).card;
+        final area = this.area(player);
+        area.removeFromDiscard(card);
+        area.shuffleIntoDeck(card, _random);
+      case final kind:
+        throw UnimplementedError('Active ability of ${kind.name}');
+    }
+    _activeUsed.add(player);
   }
 
   /// Indica si hay un Tie sin resolver: el próximo Clash define también

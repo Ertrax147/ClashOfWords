@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:meta/meta.dart';
 
 import '../entities/game_card.dart';
@@ -122,6 +124,18 @@ final class PlayerArea {
   /// Agrega [cards] al Discard Stack.
   @internal
   void discard(Iterable<MatchCard> cards) => _discardStack.addAll(cards);
+
+  /// Quita [card] del Discard Stack. Devuelve `false` si no estaba ahí.
+  @internal
+  bool removeFromDiscard(MatchCard card) => _discardStack.remove(card);
+
+  /// Pone [card] en el Deck y lo baraja con [random].
+  @internal
+  void shuffleIntoDeck(MatchCard card, Random random) {
+    _deck
+      ..add(card)
+      ..shuffle(random);
+  }
 
   /// Agrega [cards] al Trophy Stack.
   @internal

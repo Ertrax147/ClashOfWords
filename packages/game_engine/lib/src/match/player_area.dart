@@ -21,6 +21,7 @@ final class PlayerArea {
   final List<MatchCard> _hand = [];
   final List<MatchCard> _discardStack = [];
   final List<MatchCard> _trophyStack = [];
+  final List<MatchCard> _tiedCards = [];
   CreatureInPlay? _creatureInPlay;
 
   /// Initial Effect del jugador, en juego desde el inicio de la partida.
@@ -42,6 +43,10 @@ final class PlayerArea {
   /// Cartas del rival que este jugador venció: sus trofeos.
   List<MatchCard> get trophyStack => List.unmodifiable(_trophyStack);
 
+  /// Creatures apartadas por un Tie sin resolver, con sus Items. Siguen en
+  /// juego hasta que un nuevo Clash defina a quién le corresponden (CU-04).
+  List<MatchCard> get tiedCards => List.unmodifiable(_tiedCards);
+
   /// Saca la carta superior del Deck, o devuelve `null` si está vacío.
   @internal
   MatchCard? drawTop() => _deck.isEmpty ? null : _deck.removeAt(0);
@@ -59,6 +64,19 @@ final class PlayerArea {
     _creatureInPlay = null;
     if (inPlay == null) return [];
     return [inPlay.creature, ?inPlay.item];
+  }
+
+  /// Aparta a la Creature en juego y su Item por un Tie.
+  @internal
+  void setAsideTied() => _tiedCards.addAll(removeFromPlay());
+
+  /// Saca las cartas apartadas por un Tie y las devuelve, para moverlas a
+  /// la pila que corresponda.
+  @internal
+  List<MatchCard> takeTied() {
+    final cards = List.of(_tiedCards);
+    _tiedCards.clear();
+    return cards;
   }
 
   /// Agrega [card] a la Hand.

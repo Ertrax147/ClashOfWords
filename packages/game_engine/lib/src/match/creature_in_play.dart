@@ -60,10 +60,17 @@ final class CreatureInPlay {
   void equip(MatchCard<Item> item) {
     _items.add(item);
     final granted = item.card.grantedDuration;
+    if (granted != null) grantDuration(granted);
+  }
+
+  /// Le otorga [duration] a la Creature, contando el Clash actual.
+  ///
+  /// Conserva la mayor entre lo que le quedaba y [duration]: una Duration
+  /// otorgada nunca la empeora.
+  @internal
+  void grantDuration(ClashDuration duration) {
     final remaining = _remaining;
-    if (granted != null && remaining != null) {
-      _remaining = remaining.max(granted);
-    }
+    if (remaining != null) _remaining = remaining.max(duration);
   }
 
   /// Descuenta un Clash de su Duration.

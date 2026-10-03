@@ -231,6 +231,109 @@ void main() {
     });
   });
 
+  group('Leadership', () {
+    /// Partida en la que Wolf (Power 5) enfrenta a Creatures débiles, con
+    /// Leadership en el jugador uno, ya en la fase de jugar.
+    GameMatch leadershipMatch(List<GameCard> one) {
+      return matchOf(
+        one,
+        [for (var i = 0; i < 4; i++) common('Rock $i', warrior, 1)],
+        oneEffect: initialEffectOf(InitialEffectKind.leadership),
+      )..revealCreatures();
+    }
+
+    test('keeps the creature in play for 3 clashes', () {
+      final match = leadershipMatch([
+        common('Wolf', wild, 5),
+        common('Pup', wild, 1),
+      ]);
+      match.useInitialEffect(Player.one);
+
+      match.resolveClash();
+      expect(names([match.area(Player.one).creatureInPlay!.creature]), [
+        'Wolf',
+      ]);
+      expect(
+        match.area(Player.one).creatureInPlay!.remaining,
+        ClashDuration(2),
+      );
+
+      playClash(match);
+      expect(match.area(Player.one).creatureInPlay, isNotNull);
+
+      playClash(match);
+      expect(match.area(Player.one).creatureInPlay, isNull);
+      expect(names(match.area(Player.one).discardStack), ['Wolf']);
+    });
+
+    test('does not worsen a creature with a longer duration', () {
+      // Unicorn Queen trae Duration de 4 Clashes.
+      final match = leadershipMatch([unicornQueen]);
+
+      match.useInitialEffect(Player.one);
+
+      expect(
+        match.area(Player.one).creatureInPlay!.remaining,
+        ClashDuration(4),
+      );
+    });
+
+    test('can only be used once per game', () {
+      final match = leadershipMatch([common('Wolf', wild, 5)])
+        ..useInitialEffect(Player.one);
+
+      expect(
+        match.checkUseInitialEffect(Player.one),
+        InvalidPlayReason.alreadyUsed,
+      );
+    });
+  });
+
+  group('Kindness', () {
+    GameMatch kindnessMatch(List<GameCard> two) => matchOf(
+      [common('Wolf', wild, 5), common('Pup', wild, 1)],
+      two,
+      oneEffect: initialEffectOf(InitialEffectKind.kindness),
+    )..revealCreatures();
+
+    test('moves the top card of the rival deck to the own trophy stack', () {
+      final match = kindnessMatch([
+        common('Rock', warrior, 1),
+        common('Stone', warrior, 1),
+        common('Pebble', warrior, 1),
+      ]);
+
+      match.useInitialEffect(Player.one);
+
+      expect(names(match.area(Player.one).trophyStack), ['Stone']);
+      expect(names(match.area(Player.two).deck), ['Pebble']);
+      expect(match.hasUsedActive(Player.one), isTrue);
+    });
+
+    test('is not usable if the rival deck is empty', () {
+      final match = kindnessMatch([common('Rock', warrior, 1)]);
+
+      expect(
+        match.checkUseInitialEffect(Player.one),
+        InvalidPlayReason.noValidTarget,
+      );
+    });
+
+    test('taking the last card ends the game at the next reveal', () {
+      final match = kindnessMatch([
+        common('Rock', warrior, 1),
+        common('Stone', warrior, 1),
+      ])..useInitialEffect(Player.one);
+
+      match.resolveClash();
+      match.revealCreatures();
+
+      expect(match.phase, MatchPhase.finished);
+      expect(match.result.winner, Player.one);
+      expect(match.result.trophiesOfOne, 2);
+    });
+  });
+
   group('Responsibility active ability', () {
     /// Partida en la que Bag, con Flags Jacket, venció a Rock y ambas
     /// cartas están en el Discard Stack del jugador uno. Queda en la fase de

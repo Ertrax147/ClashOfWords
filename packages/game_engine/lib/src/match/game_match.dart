@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../entities/ability.dart';
 import '../entities/card_class.dart';
+import '../entities/clash_duration.dart';
 import '../entities/game_card.dart';
 import '../entities/initial_effect_kind.dart';
 import '../rules/clash_resolver.dart';
@@ -308,6 +309,14 @@ final class GameMatch {
             !(choice is CardChoice && options.contains(choice.card))) {
           return InvalidPlayReason.invalidChoice;
         }
+      case InitialEffectKind.leadership:
+        if (area(player).creatureInPlay == null) {
+          return InvalidPlayReason.noValidTarget;
+        }
+      case InitialEffectKind.kindness:
+        if (area(player.opponent).deck.isEmpty) {
+          return InvalidPlayReason.noValidTarget;
+        }
       default:
         break;
     }
@@ -321,6 +330,11 @@ final class GameMatch {
   ///   Deck.
   /// - Responsibility: [choice] es el Item de su Discard Stack que vuelve al
   ///   Deck.
+  /// - Leadership: su Creature en la mesa queda con Duration de 3 Clashes,
+  ///   contando el actual. Conserva la mayor si ya tenía más.
+  /// - Kindness: la carta superior del Deck rival va directo a su Trophy
+  ///   Stack. Si era la última, el rival no podrá revelar y la partida
+  ///   terminará en el próximo Clash.
   ///
   /// Lanza un [InvalidPlayException] si la jugada no está permitida (ver
   /// [checkUseInitialEffect]).
@@ -337,6 +351,11 @@ final class GameMatch {
         final area = this.area(player);
         area.removeFromDiscard(card);
         area.shuffleIntoDeck(card, _random);
+      case InitialEffectKind.leadership:
+        area(player).creatureInPlay!.grantDuration(ClashDuration(3));
+      case InitialEffectKind.kindness:
+        final stolen = area(player.opponent).drawTop()!;
+        area(player).addTrophies([stolen]);
       case final kind:
         throw UnimplementedError('Active ability of ${kind.name}');
     }

@@ -17,10 +17,6 @@ enum MatchPhase {
   /// antes de resolver el Clash ([GameMatch.resolveClash]).
   play,
 
-  /// El último Clash terminó en Tie. Su resolución se implementa en una
-  /// etapa posterior del motor.
-  tie,
-
   /// La partida terminó y tiene resultado ([GameMatch.result]).
   finished,
 }
@@ -111,9 +107,13 @@ final class MatchResult {
 /// 2. Los jugadores juegan cartas de su Hand, por ejemplo [equipItem].
 /// 3. [resolveClash]: se resuelve el Clash y las cartas van a su pila.
 ///
+/// Si un Clash termina en Tie, las dos Creatures se apartan y se juega un
+/// nuevo Clash que define también el empatado (CU-04).
+///
 /// La partida termina cuando un jugador necesita revelar una Creature y su
-/// Deck está vacío. Las Creatures que siguen en la mesa van al Discard Stack
-/// de su dueño y gana quien tenga más trofeos ([result]).
+/// Deck está vacío. Las Creatures que siguen en la mesa o apartadas por un
+/// Tie van al Discard Stack de su dueño y gana quien tenga más trofeos
+/// ([result]).
 final class GameMatch {
   /// Crea una partida con los mazos de ambos jugadores.
   ///
@@ -172,6 +172,11 @@ final class GameMatch {
 
   /// Zona de juego de [player]: sus pilas y su Creature en la mesa.
   PlayerArea area(Player player) => _areas[player]!;
+
+  /// Indica si hay un Tie sin resolver: el próximo Clash define también
+  /// los Clashes empatados (CU-04).
+  bool get hasPendingTie =>
+      _areas.values.any((area) => area.tiedCards.isNotEmpty);
 
   /// Resultado de la partida.
   ///
@@ -253,15 +258,20 @@ final class GameMatch {
     area.creatureInPlay!.equip(item);
   }
 
-  /// Resuelve el Clash entre las dos Creatures en la mesa (RF-04).
+  /// Resuelve el Clash entre las dos Creatures en la mesa (RF-04, CU-04).
   ///
   /// Si hay ganador:
   /// - La perdedora y su Item van al Trophy Stack del ganador, aunque le
   ///   quedara Duration.
   /// - La ganadora descuenta un Clash. Si agotó su Duration, va con su Item
   ///   al Discard Stack de su dueño; si no, sigue en la mesa.
+  /// - Si había Creatures apartadas por un Tie, el ganador también gana esos
+  ///   Clashes: las apartadas del perdedor van a su Trophy Stack y las suyas,
+  ///   a su Discard Stack.
   ///
-  /// Si hay Tie, la partida pasa a la fase [MatchPhase.tie].
+  /// Si hay Tie, ambas Creatures se apartan con sus Items, aunque les quede
+  /// Duration, y la partida vuelve a la fase de revelar para jugar un nuevo
+  /// Clash. Si ese Clash también empata, se siguen acumulando.
   ///
   /// Lanza un [StateError] si la partida no está en la fase
   /// [MatchPhase.play].
@@ -280,22 +290,28 @@ final class GameMatch {
         final loserArea = area(winnerPlayer.opponent);
 
         winnerArea.addTrophies(loserArea.removeFromPlay());
+        winnerArea.addTrophies(loserArea.takeTied());
+        winnerArea.discard(winnerArea.takeTied());
         final survivor = winnerArea.creatureInPlay!..spendClash();
         if (survivor.isExhausted) {
           winnerArea.discard(winnerArea.removeFromPlay());
         }
-        _phase = MatchPhase.reveal;
       case ClashTie():
-        _phase = MatchPhase.tie;
+        for (final area in _areas.values) {
+          area.setAsideTied();
+        }
     }
+    _phase = MatchPhase.reveal;
     return result;
   }
 
-  /// Termina la partida: las Creatures que siguen en la mesa vuelven al
-  /// Discard Stack de su dueño, porque nadie las venció.
+  /// Termina la partida: las Creatures que siguen en la mesa o apartadas
+  /// por un Tie vuelven al Discard Stack de su dueño, porque nadie las
+  /// venció (CU-04, flujo 2a).
   void _finish() {
     for (final area in _areas.values) {
       area.discard(area.removeFromPlay());
+      area.discard(area.takeTied());
     }
     _phase = MatchPhase.finished;
   }

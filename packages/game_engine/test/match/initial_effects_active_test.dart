@@ -130,7 +130,10 @@ void main() {
     });
 
     test('offers the creatures of the own discard stack', () {
-      final match = afterWolfWon(InitialEffectKind.recycle);
+      final match = afterWolfWon(
+        InitialEffectKind.recycle,
+        rival: InitialEffectKind.diversity,
+      );
 
       expect(names(match.activeOptions(Player.one)), ['Wolf']);
       expect(match.activeOptions(Player.two), isEmpty);
@@ -331,6 +334,199 @@ void main() {
       expect(match.phase, MatchPhase.finished);
       expect(match.result.winner, Player.one);
       expect(match.result.trophiesOfOne, 2);
+    });
+  });
+
+  group('Loyalty', () {
+    test('is not usable while the rival trophy stack has no creatures', () {
+      final match = matchWith(
+        InitialEffectKind.loyalty,
+        InitialEffectKind.diversity,
+      )..revealCreatures();
+
+      expect(
+        match.checkUseInitialEffect(Player.one),
+        InvalidPlayReason.noValidTarget,
+      );
+    });
+
+    test('brings a lost creature and its item back to the own discard', () {
+      // Bag, con Flags Jacket, pierde contra Spear Statue y ambos quedan en
+      // el Trophy Stack del jugador dos.
+      final match = matchOf(
+        [flagsJacket, common('Bag', traveler, 1), common('Second', wild, 1)],
+        [spearStatue, common('Stone', warrior, 1)],
+        oneEffect: initialEffectOf(InitialEffectKind.loyalty),
+      )..revealCreatures();
+      match.equipItem(Player.one, itemInHand(match, Player.one));
+      match.resolveClash();
+      match.revealCreatures();
+      expect(names(match.area(Player.two).trophyStack), [
+        'Bag',
+        'Flags Jacket',
+      ]);
+
+      final bag = match.activeOptions(Player.one).single;
+      match.useInitialEffect(Player.one, CardChoice(bag));
+
+      expect(names(match.area(Player.one).discardStack), [
+        'Bag',
+        'Flags Jacket',
+      ]);
+      expect(match.area(Player.two).trophyStack, isEmpty);
+      expect(match.hasUsedActive(Player.one), isTrue);
+    });
+
+    test('leaves behind an item that the rival took with Kindness', () {
+      // Kindness le roba a Loyalty el Flags Jacket, que queda en el Trophy
+      // Stack justo después de Bag, pero no es de Bag.
+      final match = matchOf(
+        [
+          common('Bag', traveler, 1),
+          common('Second', wild, 1),
+          flagsJacket,
+          common('Third', wild, 1),
+        ],
+        [common('Rock', warrior, 5), common('Stone', warrior, 1)],
+        oneEffect: initialEffectOf(InitialEffectKind.loyalty),
+        twoEffect: initialEffectOf(InitialEffectKind.kindness),
+      );
+      playClash(match);
+      match.revealCreatures();
+      match.useInitialEffect(Player.two);
+      expect(names(match.area(Player.two).trophyStack), [
+        'Bag',
+        'Flags Jacket',
+      ]);
+
+      final bag = match.activeOptions(Player.one).single;
+      match.useInitialEffect(Player.one, CardChoice(bag));
+
+      expect(names(match.area(Player.one).discardStack), ['Bag']);
+      expect(names(match.area(Player.two).trophyStack), ['Flags Jacket']);
+    });
+
+    test('rejects a card that is not a creature of the rival trophy stack', () {
+      final match = matchOf(
+        [common('Bag', traveler, 1), common('Second', wild, 1)],
+        [common('Rock', warrior, 5), common('Stone', warrior, 1)],
+        oneEffect: initialEffectOf(InitialEffectKind.loyalty),
+      );
+      playClash(match);
+      match.revealCreatures();
+      final second = match.area(Player.one).creatureInPlay!.creature;
+
+      expect(
+        match.checkUseInitialEffect(Player.one, CardChoice(second)),
+        InvalidPlayReason.invalidChoice,
+      );
+    });
+  });
+
+  group('Honesty', () {
+    /// Partida en la que ambos Decks tienen más de 3 cartas debajo de la
+    /// Creature en la mesa. Wolf y Rock ya están en juego.
+    GameMatch honestyMatch() => matchOf(
+      [
+        common('Wolf', wild, 5),
+        for (final name in ['A', 'B', 'C', 'D']) common(name, wild, 1),
+      ],
+      [
+        common('Rock', warrior, 1),
+        for (final name in ['X', 'Y', 'Z', 'W']) common(name, warrior, 1),
+      ],
+      oneEffect: initialEffectOf(InitialEffectKind.honesty),
+    )..revealCreatures();
+
+    List<MatchCard> pick(List<MatchCard> cards, String order) => [
+      for (final name in order.split(''))
+        cards.firstWhere((card) => card.card.name == name),
+    ];
+
+    test('discovers the top 3 cards of both decks', () {
+      final cards = honestyMatch().honestyCards(Player.one);
+
+      expect(names(cards.own), ['A', 'B', 'C']);
+      expect(names(cards.enemy), ['X', 'Y', 'Z']);
+    });
+
+    test('puts them back in the order the player chose', () {
+      final match = honestyMatch();
+      final cards = match.honestyCards(Player.one);
+
+      match.useInitialEffect(
+        Player.one,
+        ReorderChoice(
+          own: pick(cards.own, 'CAB'),
+          enemy: pick(cards.enemy, 'ZYX'),
+        ),
+      );
+
+      expect(names(match.area(Player.one).deck), ['C', 'A', 'B', 'D']);
+      expect(names(match.area(Player.two).deck), ['Z', 'Y', 'X', 'W']);
+      expect(match.hasUsedActive(Player.one), isTrue);
+    });
+
+    test('rejects an order that is not a rearrangement of the cards', () {
+      final match = honestyMatch();
+      final cards = match.honestyCards(Player.one);
+      final all = [...cards.own, ...cards.enemy];
+
+      InvalidPlayReason? check(List<MatchCard> own, List<MatchCard> enemy) =>
+          match.checkUseInitialEffect(
+            Player.one,
+            ReorderChoice(own: own, enemy: enemy),
+          );
+
+      // Falta una carta.
+      expect(
+        check(pick(all, 'AB'), cards.enemy),
+        InvalidPlayReason.invalidChoice,
+      );
+      // Una carta repetida.
+      expect(
+        check(pick(all, 'AAB'), cards.enemy),
+        InvalidPlayReason.invalidChoice,
+      );
+      // Cartas del Deck equivocado.
+      expect(check(cards.enemy, cards.own), InvalidPlayReason.invalidChoice);
+      // Ni siquiera es un orden.
+      expect(
+        match.checkUseInitialEffect(Player.one, const NoChoice()),
+        InvalidPlayReason.invalidChoice,
+      );
+    });
+
+    test('works when a deck has fewer than 3 cards', () {
+      final match = matchOf(
+        [common('Wolf', wild, 5), common('A', wild, 1)],
+        [common('Rock', warrior, 1)],
+        oneEffect: initialEffectOf(InitialEffectKind.honesty),
+      )..revealCreatures();
+      final cards = match.honestyCards(Player.one);
+      expect(names(cards.own), ['A']);
+      expect(cards.enemy, isEmpty);
+
+      expect(
+        match.checkUseInitialEffect(
+          Player.one,
+          ReorderChoice(own: cards.own, enemy: const []),
+        ),
+        isNull,
+      );
+    });
+
+    test('is not usable when both decks are empty', () {
+      final match = matchOf(
+        [common('Wolf', wild, 5)],
+        [common('Rock', warrior, 1)],
+        oneEffect: initialEffectOf(InitialEffectKind.honesty),
+      )..revealCreatures();
+
+      expect(
+        match.checkUseInitialEffect(Player.one),
+        InvalidPlayReason.noValidTarget,
+      );
     });
   });
 

@@ -16,6 +16,21 @@ final class NoChoice extends InitialEffectChoice {
   const NoChoice();
 }
 
+/// El jugador reordena las cartas superiores de los Decks (Honesty).
+///
+/// Cada lista es la nueva disposición de las cartas que se revelaron del
+/// Deck correspondiente. La primera queda como carta superior.
+final class ReorderChoice extends InitialEffectChoice {
+  /// Crea la elección con el nuevo orden de ambos Decks.
+  const ReorderChoice({required this.own, required this.enemy});
+
+  /// Nuevo orden de las cartas superiores del Deck propio.
+  final List<MatchCard> own;
+
+  /// Nuevo orden de las cartas superiores del Deck del rival.
+  final List<MatchCard> enemy;
+}
+
 /// El jugador elige una carta, por ejemplo la Creature que Recycle devuelve
 /// al Deck.
 final class CardChoice extends InitialEffectChoice {

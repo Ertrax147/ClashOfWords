@@ -283,9 +283,33 @@ final class GameMatch {
         discard.whereType<MatchCard<Creature>>().toList(),
       InitialEffectKind.responsibility =>
         discard.whereType<MatchCard<Item>>().toList(),
+      InitialEffectKind.loyalty => area(player.opponent).trophyCreatures,
       _ => const [],
     };
   }
+
+  /// Cartas que [player] descubre con Honesty: las [honestyCount] superiores
+  /// de su Deck y del Deck del rival, en su orden actual.
+  ///
+  /// Están vacías si [player] no puede usar Honesty. La interfaz las usa
+  /// para mostrarlas y dejar que el jugador las reordene.
+  ({List<MatchCard> own, List<MatchCard> enemy}) honestyCards(Player player) {
+    if (activeKindOf(player) != InitialEffectKind.honesty) {
+      return (own: const [], enemy: const []);
+    }
+    List<MatchCard> top(Player owner) =>
+        area(owner).deck.take(honestyCount).toList();
+    return (own: top(player), enemy: top(player.opponent));
+  }
+
+  /// Cantidad de cartas superiores que Honesty descubre de cada Deck.
+  static const honestyCount = 3;
+
+  /// Indica si [order] es una reordenación de las cartas [top].
+  static bool _isReordering(List<MatchCard> order, List<MatchCard> top) =>
+      order.length == top.length &&
+      order.toSet().length == order.length &&
+      order.every(top.contains);
 
   /// Indica por qué [player] no puede usar la habilidad activa de su
   /// Initial Effect, o `null` si sí puede.
@@ -302,7 +326,9 @@ final class GameMatch {
     if (kind == null) return InvalidPlayReason.noActiveAbility;
     if (hasUsedActive(player)) return InvalidPlayReason.alreadyUsed;
     switch (kind) {
-      case InitialEffectKind.recycle || InitialEffectKind.responsibility:
+      case InitialEffectKind.recycle ||
+          InitialEffectKind.responsibility ||
+          InitialEffectKind.loyalty:
         final options = activeOptions(player);
         if (options.isEmpty) return InvalidPlayReason.noValidTarget;
         if (choice != null &&
@@ -316,6 +342,17 @@ final class GameMatch {
       case InitialEffectKind.kindness:
         if (area(player.opponent).deck.isEmpty) {
           return InvalidPlayReason.noValidTarget;
+        }
+      case InitialEffectKind.honesty:
+        final cards = honestyCards(player);
+        if (cards.own.isEmpty && cards.enemy.isEmpty) {
+          return InvalidPlayReason.noValidTarget;
+        }
+        if (choice != null &&
+            !(choice is ReorderChoice &&
+                _isReordering(choice.own, cards.own) &&
+                _isReordering(choice.enemy, cards.enemy))) {
+          return InvalidPlayReason.invalidChoice;
         }
       default:
         break;
@@ -335,6 +372,11 @@ final class GameMatch {
   /// - Kindness: la carta superior del Deck rival va directo a su Trophy
   ///   Stack. Si era la última, el rival no podrá revelar y la partida
   ///   terminará en el próximo Clash.
+  /// - Loyalty: [choice] es la Creature de su propio equipo que está en el
+  ///   Trophy Stack del rival (ver [activeOptions]). Vuelve a su Discard
+  ///   Stack junto con sus Items, y el rival pierde esos trofeos.
+  /// - Honesty: [choice] es un [ReorderChoice] con el nuevo orden de las
+  ///   [honestyCount] cartas superiores de cada Deck (ver [honestyCards]).
   ///
   /// Lanza un [InvalidPlayException] si la jugada no está permitida (ver
   /// [checkUseInitialEffect]).
@@ -356,6 +398,16 @@ final class GameMatch {
       case InitialEffectKind.kindness:
         final stolen = area(player.opponent).drawTop()!;
         area(player).addTrophies([stolen]);
+      case InitialEffectKind.loyalty:
+        // La validación garantiza que es una Creature del Trophy Stack rival.
+        final creature = (choice as CardChoice).card as MatchCard<Creature>;
+        area(
+          player,
+        ).discard(area(player.opponent).takeTrophyCreature(creature));
+      case InitialEffectKind.honesty:
+        final order = choice as ReorderChoice;
+        area(player).reorderTop(order.own);
+        area(player.opponent).reorderTop(order.enemy);
       case final kind:
         throw UnimplementedError('Active ability of ${kind.name}');
     }
@@ -658,6 +710,7 @@ final class GameMatch {
     final loserArea = area(loser);
     final winnerArea = area(loser.opponent);
     var saved = false;
+    final trophies = <MatchCard>[];
     for (final card in cards) {
       if (card is MatchCard<Creature>) {
         saved =
@@ -668,9 +721,11 @@ final class GameMatch {
       if (saved) {
         loserArea.discard([card]);
       } else {
-        winnerArea.addTrophies([card]);
+        trophies.add(card);
       }
     }
+    // En un solo lote, para que cada Item quede registrado con su Creature.
+    winnerArea.addTrophies(trophies);
   }
 
   /// Habilidades en juego de [owner], con el momento en que entraron: las de

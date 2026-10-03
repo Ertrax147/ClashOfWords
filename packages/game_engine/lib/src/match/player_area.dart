@@ -24,6 +24,9 @@ final class PlayerArea {
   final List<MatchCard> _hand = [];
   final List<MatchCard> _discardStack = [];
   final List<MatchCard> _trophyStack = [];
+
+  /// Items del Trophy Stack que llegaron con su Creature.
+  final Map<MatchCard<Creature>, List<MatchCard<Item>>> _trophyItems = {};
   final List<MatchCard> _tiedCards = [];
   final List<EffectInPlay> _effectsInPlay = [];
   CreatureInPlay? _creatureInPlay;
@@ -138,6 +141,46 @@ final class PlayerArea {
   }
 
   /// Agrega [cards] al Trophy Stack.
+  ///
+  /// Si [cards] trae una Creature seguida de Items, los Items quedan
+  /// registrados como suyos: cuando la Creature salga del Trophy Stack
+  /// ([takeTrophyCreature]) se llevará sus Items. Un Item que llega solo,
+  /// como el que roba Kindness, no pertenece a ninguna Creature.
   @internal
-  void addTrophies(Iterable<MatchCard> cards) => _trophyStack.addAll(cards);
+  void addTrophies(Iterable<MatchCard> cards) {
+    MatchCard<Creature>? owner;
+    for (final card in cards) {
+      _trophyStack.add(card);
+      switch (card) {
+        case MatchCard<Creature>():
+          owner = card;
+        case MatchCard<Item>() when owner != null:
+          (_trophyItems[owner] ??= []).add(card);
+        default:
+          owner = null;
+      }
+    }
+  }
+
+  /// Creatures del Trophy Stack, sin sus Items.
+  List<MatchCard<Creature>> get trophyCreatures =>
+      _trophyStack.whereType<MatchCard<Creature>>().toList();
+
+  /// Saca [creature] del Trophy Stack junto con sus Items, y devuelve esas
+  /// cartas: la Creature primero.
+  ///
+  /// Devuelve una lista vacía si [creature] no está en el Trophy Stack.
+  @internal
+  List<MatchCard> takeTrophyCreature(MatchCard<Creature> creature) {
+    if (!_trophyStack.remove(creature)) return [];
+    final items = _trophyItems.remove(creature) ?? [];
+    items.forEach(_trophyStack.remove);
+    return [creature, ...items];
+  }
+
+  /// Reemplaza las primeras cartas del Deck por [order], que debe ser una
+  /// reordenación de ellas. La primera de [order] queda como carta superior.
+  @internal
+  void reorderTop(List<MatchCard> order) =>
+      _deck.setRange(0, order.length, order);
 }

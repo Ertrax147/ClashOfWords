@@ -11,9 +11,7 @@ class ClashOfWordsApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
       ),
-      home: const Scaffold(
-        body: Center(child: Text('Clash of Words')),
-      ),
+      home: const Scaffold(body: Center(child: Text('Clash of Words'))),
     );
   }
 }

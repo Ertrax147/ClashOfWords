@@ -8,6 +8,7 @@ export 'src/entities/ability.dart';
 export 'src/entities/card_class.dart';
 export 'src/entities/clash_duration.dart';
 export 'src/entities/game_card.dart';
+export 'src/entities/initial_effect_kind.dart';
 export 'src/entities/rarity.dart';
 export 'src/match/creature_in_play.dart';
 export 'src/match/effect_in_play.dart';

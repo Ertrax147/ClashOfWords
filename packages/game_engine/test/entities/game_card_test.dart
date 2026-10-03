@@ -46,11 +46,15 @@ Item diamondSword() => Item(
 void main() {
   group('GameCard', () {
     test('an empty id or name is rejected', () {
+      const kind = InitialEffectKind.loyalty;
       expect(
-        () => InitialEffect(id: ' ', name: 'Loyalty'),
+        () => InitialEffect(id: ' ', name: 'Loyalty', kind: kind),
         throwsArgumentError,
       );
-      expect(() => InitialEffect(id: 'loyalty', name: ''), throwsArgumentError);
+      expect(
+        () => InitialEffect(id: 'loyalty', name: '', kind: kind),
+        throwsArgumentError,
+      );
     });
 
     test('a switch over GameCard covers the four card types', () {
@@ -75,7 +79,13 @@ void main() {
         'Effect',
       );
       expect(
-        typeOf(InitialEffect(id: 'loyalty', name: 'Loyalty')),
+        typeOf(
+          InitialEffect(
+            id: 'loyalty',
+            name: 'Loyalty',
+            kind: InitialEffectKind.loyalty,
+          ),
+        ),
         'Initial Effect',
       );
     });

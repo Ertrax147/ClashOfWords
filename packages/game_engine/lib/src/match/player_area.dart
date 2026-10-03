@@ -95,7 +95,7 @@ final class PlayerArea {
     final inPlay = _creatureInPlay;
     _creatureInPlay = null;
     if (inPlay == null) return [];
-    return [inPlay.creature, ?inPlay.item];
+    return [inPlay.creature, ...inPlay.items];
   }
 
   /// Aparta a la Creature en juego y su Item por un Tie.

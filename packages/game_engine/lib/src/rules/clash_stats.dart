@@ -33,23 +33,27 @@ final class ClashStats {
         'Cannot be equipped to ${creature.name}: its class does not match',
       );
     }
-    return ClashStats.equipped(creature, item);
+    return ClashStats.equipped(creature, [?item]);
   }
 
-  /// Calcula los valores de combate de [creature] con su [item], sin
+  /// Calcula los valores de combate de [creature] con sus [items], sin
   /// validar la Class.
   ///
-  /// Lo usa la partida, que valida al equipar con las Class efectivas: una
-  /// Creature a la que un Effect le agregó una Class puede equipar Items de
-  /// esa Class.
-  factory ClashStats.equipped(Creature creature, Item? item) {
-    final grantedRarity = item?.grantedRarity;
+  /// Cada Item suma su Power y la Creature conserva la mayor Rarity. Lo usa
+  /// la partida, que valida al equipar con las Class efectivas: una Creature
+  /// a la que un Effect le agregó una Class puede equipar Items de esa Class.
+  factory ClashStats.equipped(Creature creature, List<Item> items) {
+    var rarity = creature.rarity;
+    var power = creature.power;
+    for (final item in items) {
+      final granted = item.grantedRarity;
+      if (granted != null) rarity = rarity.max(granted);
+      power += item.powerBonus;
+    }
     return ClashStats(
-      rarity: grantedRarity == null
-          ? creature.rarity
-          : creature.rarity.max(grantedRarity),
+      rarity: rarity,
       classes: {creature.cardClass},
-      power: creature.power + (item?.powerBonus ?? 0),
+      power: power,
     );
   }
 

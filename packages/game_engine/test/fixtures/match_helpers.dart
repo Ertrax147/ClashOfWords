@@ -6,9 +6,17 @@ import 'cards.dart';
 
 /// Crea una partida sin barajar: la primera carta de cada lista es la
 /// superior del Deck.
-GameMatch matchOf(List<GameCard> one, List<GameCard> two) => GameMatch(
-  playerOne: PlayerDeck(cards: one, initialEffect: loyalty),
-  playerTwo: PlayerDeck(cards: two, initialEffect: respect),
+///
+/// Por defecto ambos jugadores tienen Loyalty, que no cambia nada si no se
+/// activa. [oneEffect] y [twoEffect] permiten probar otros Initial Effects.
+GameMatch matchOf(
+  List<GameCard> one,
+  List<GameCard> two, {
+  InitialEffect? oneEffect,
+  InitialEffect? twoEffect,
+}) => GameMatch(
+  playerOne: PlayerDeck(cards: one, initialEffect: oneEffect ?? loyalty),
+  playerTwo: PlayerDeck(cards: two, initialEffect: twoEffect ?? loyalty),
   shuffle: false,
 );
 

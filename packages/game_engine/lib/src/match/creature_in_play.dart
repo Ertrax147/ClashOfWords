@@ -26,11 +26,12 @@ final class CreatureInPlay {
   /// Momento de la partida en que entró en juego.
   final int order;
 
-  MatchCard<Item>? _item;
+  final List<MatchCard<Item>> _items = [];
   ClashDuration? _remaining;
 
-  /// Item equipado, o `null` si no tiene.
-  MatchCard<Item>? get item => _item;
+  /// Items equipados, en el orden en que se equiparon. Normalmente es uno
+  /// como máximo; con el Initial Effect Responsibility pueden ser varios.
+  List<MatchCard<Item>> get items => List.unmodifiable(_items);
 
   /// Clashes que le quedan en juego, contando el próximo.
   ///
@@ -40,10 +41,12 @@ final class CreatureInPlay {
   /// Indica si ya agotó su Duration.
   bool get isExhausted => _remaining == null;
 
-  /// Valores de la Creature con su Item aplicado, sin Effects ni otras
+  /// Valores de la Creature con sus Items aplicados, sin Effects ni otras
   /// habilidades. Los valores finales del Clash los calcula la partida
   /// ([GameMatch.statsOf]).
-  ClashStats get stats => ClashStats.equipped(creature.card, _item?.card);
+  ClashStats get stats => ClashStats.equipped(creature.card, [
+    for (final item in _items) item.card,
+  ]);
 
   /// Equipa [item] a la Creature.
   ///
@@ -55,7 +58,7 @@ final class CreatureInPlay {
   /// método.
   @internal
   void equip(MatchCard<Item> item) {
-    _item = item;
+    _items.add(item);
     final granted = item.card.grantedDuration;
     final remaining = _remaining;
     if (granted != null && remaining != null) {

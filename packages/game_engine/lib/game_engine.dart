@@ -1,4 +1,7 @@
-/// Clash of Words game engine.
+/// Motor del juego Clash of Words.
 ///
-/// Pure Dart: it must not depend on Flutter, the UI or storage (RNF-09).
+/// Dart puro: no puede depender de Flutter, de la interfaz ni del
+/// almacenamiento (RNF-09).
 library;
+
+export 'src/entities/rarity.dart';

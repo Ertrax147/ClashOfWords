@@ -18,7 +18,7 @@ void main() {
       final inPlay = CreatureInPlay(copyOf(unicornQueen));
 
       expect(inPlay.remaining, ClashDuration(4));
-      expect(inPlay.item, isNull);
+      expect(inPlay.items, isEmpty);
       expect(inPlay.isExhausted, isFalse);
     });
 

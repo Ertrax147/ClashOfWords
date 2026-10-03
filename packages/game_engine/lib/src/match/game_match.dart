@@ -1,7 +1,9 @@
 import 'dart:math';
 
 import '../entities/ability.dart';
+import '../entities/card_class.dart';
 import '../entities/game_card.dart';
+import '../entities/initial_effect_kind.dart';
 import '../rules/clash_resolver.dart';
 import '../rules/clash_resolver.dart' as rules show resolveClash;
 import '../rules/clash_stats.dart';
@@ -168,6 +170,33 @@ final class GameMatch {
   /// Effects, para aplicar sus habilidades en ese orden.
   int _nextOrder = 0;
 
+  // Registro de la partida que necesitan los Initial Effects pasivos.
+
+  /// Class que ya entraron en juego, por jugador (Diversity).
+  final Map<Player, Set<CardClass>> _classesSeen = {
+    for (final player in Player.values) player: {},
+  };
+
+  /// Creatures que fueron las primeras de su Class (Diversity).
+  final Set<MatchCard> _firstOfTheirClass = {};
+
+  /// Creatures derrotadas que Tolerance ya salvó, por jugador.
+  final Map<Player, int> _toleranceUsed = {
+    for (final player in Player.values) player: 0,
+  };
+
+  /// Clashes perdidos desde la última victoria, por jugador (Justice).
+  final Map<Player, int> _lossesSinceWin = {
+    for (final player in Player.values) player: 0,
+  };
+
+  /// Ganador del último Clash, o `null` si fue Tie o aún no hay ninguno
+  /// (Excellence).
+  Player? _lastWinner;
+
+  /// Si el último Clash terminó en Tie (Friendship).
+  bool _lastClashWasTie = false;
+
   /// Crea la copia de [card] con el tipo exacto de la carta, para que el
   /// motor pueda distinguir Creatures, Items y Effects.
   static MatchCard _matchCardOf(int id, GameCard card, Player owner) =>
@@ -187,6 +216,17 @@ final class GameMatch {
 
   /// Zona de juego de [player]: sus pilas y su Creature en la mesa.
   PlayerArea area(Player player) => _areas[player]!;
+
+  /// Indica si [player] cuenta con la habilidad pasiva del Initial Effect
+  /// [kind]: porque es el suyo, o porque tiene Empathy y es el del rival.
+  ///
+  /// Si ambos jugadores tienen Empathy, ninguno copia nada.
+  bool hasPassive(Player player, InitialEffectKind kind) {
+    final own = area(player).initialEffect.card.kind;
+    if (own == kind) return true;
+    final rival = area(player.opponent).initialEffect.card.kind;
+    return own == InitialEffectKind.empathy && rival == kind;
+  }
 
   /// Indica si hay un Tie sin resolver: el próximo Clash define también
   /// los Clashes empatados (CU-04).
@@ -237,13 +277,44 @@ final class GameMatch {
   /// Valores efectivos con que la Creature de [player] pelearía el Clash
   /// ahora, o `null` si no tiene Creature en la mesa.
   ///
-  /// Incluye su Item y las habilidades en juego de ambos jugadores: Effects
-  /// y habilidades de Creatures. La interfaz puede usarlo para mostrar el
-  /// Power y la Rarity actuales.
+  /// Incluye sus Items, las habilidades en juego de ambos jugadores (Effects
+  /// y habilidades de Creatures) y los bonus de los Initial Effects pasivos.
+  /// La interfaz puede usarlo para mostrar el Power y la Rarity actuales.
   ClashStats? statsOf(Player player) {
     final inPlay = area(player).creatureInPlay;
     if (inPlay == null) return null;
-    return inPlay.stats.applyModifiers(_modifiersAffecting(player));
+    final bonus = _passivePowerBonus(player, inPlay.creature);
+    return inPlay.stats.applyModifiers([
+      ..._modifiersAffecting(player),
+      if (bonus != 0)
+        StatModifier(target: AbilityTarget.own, powerDelta: bonus),
+    ]);
+  }
+
+  /// Power que suman los Initial Effects pasivos de [player] a su
+  /// [creature] en el próximo Clash.
+  ///
+  /// - Diversity: +2 si es la primera Creature de su Class.
+  /// - Justice: +1 por cada Clash perdido desde la última victoria.
+  /// - Friendship: +3 si el último Clash fue Tie.
+  /// - Excellence: +1 si ganó el último Clash.
+  int _passivePowerBonus(Player player, MatchCard<Creature> creature) {
+    var bonus = 0;
+    if (hasPassive(player, InitialEffectKind.diversity) &&
+        _firstOfTheirClass.contains(creature)) {
+      bonus += 2;
+    }
+    if (hasPassive(player, InitialEffectKind.justice)) {
+      bonus += _lossesSinceWin[player]!;
+    }
+    if (hasPassive(player, InitialEffectKind.friendship) && _lastClashWasTie) {
+      bonus += 3;
+    }
+    if (hasPassive(player, InitialEffectKind.excellence) &&
+        _lastWinner == player) {
+      bonus += 1;
+    }
+    return bonus;
   }
 
   /// Indica por qué [player] no puede equipar [item], o `null` si sí puede.
@@ -260,7 +331,10 @@ final class GameMatch {
     if (_enemyForbids(player, items: true)) {
       return InvalidPlayReason.forbiddenByEnemy;
     }
-    if (inPlay.item != null) return InvalidPlayReason.creatureAlreadyHasItem;
+    if (inPlay.items.isNotEmpty &&
+        !hasPassive(player, InitialEffectKind.responsibility)) {
+      return InvalidPlayReason.creatureAlreadyHasItem;
+    }
     final stats = statsOf(player)!;
     if (!item.card.isUniversal &&
         !item.card.classes.any(stats.classes.contains)) {
@@ -342,13 +416,21 @@ final class GameMatch {
   /// En ambos casos, los Effects en juego descuentan un Clash y los que se
   /// agotan van al Discard Stack de su dueño.
   ///
+  /// Los Initial Effects pasivos pueden cambiar el resultado: con Respect,
+  /// un Tie por Class lo gana la Creature con más Power; con Tolerance, las
+  /// primeras 3 Creatures derrotadas van al Discard Stack de su dueño en vez
+  /// de ser trofeos.
+  ///
   /// Lanza un [StateError] si la partida no está en la fase
   /// [MatchPhase.play].
   ClashResult resolveClash() {
     _requirePhase(MatchPhase.play);
-    final result = rules.resolveClash(
-      statsOf(Player.one)!,
-      statsOf(Player.two)!,
+    final first = statsOf(Player.one)!;
+    final second = statsOf(Player.two)!;
+    final result = _applyRespect(
+      rules.resolveClash(first, second),
+      first,
+      second,
     );
 
     switch (result) {
@@ -356,20 +438,29 @@ final class GameMatch {
         final winnerPlayer = winner == ClashSide.first
             ? Player.one
             : Player.two;
+        final loserPlayer = winnerPlayer.opponent;
         final winnerArea = area(winnerPlayer);
-        final loserArea = area(winnerPlayer.opponent);
+        final loserArea = area(loserPlayer);
 
-        winnerArea.addTrophies(loserArea.removeFromPlay());
-        winnerArea.addTrophies(loserArea.takeTied());
+        _sendDefeated(loserPlayer, [
+          ...loserArea.removeFromPlay(),
+          ...loserArea.takeTied(),
+        ]);
         winnerArea.discard(winnerArea.takeTied());
         final survivor = winnerArea.creatureInPlay!..spendClash();
         if (survivor.isExhausted) {
           winnerArea.discard(winnerArea.removeFromPlay());
         }
+        _lossesSinceWin[winnerPlayer] = 0;
+        _lossesSinceWin[loserPlayer] = _lossesSinceWin[loserPlayer]! + 1;
+        _lastWinner = winnerPlayer;
+        _lastClashWasTie = false;
       case ClashTie():
         for (final area in _areas.values) {
           area.setAsideTied();
         }
+        _lastWinner = null;
+        _lastClashWasTie = true;
     }
     for (final area in _areas.values) {
       area.discard(area.spendEffectsClash());
@@ -395,8 +486,55 @@ final class GameMatch {
       revealed.add(card);
       if (card is MatchCard<Creature>) {
         area.putInPlay(card, order: _nextOrder++);
+        if (_classesSeen[player]!.add(card.card.cardClass)) {
+          _firstOfTheirClass.add(card);
+        }
       } else {
         area.addToHand(card);
+      }
+    }
+  }
+
+  /// Aplica Respect: si el Clash es Tie por Class y la Creature con más
+  /// Power es de un jugador con Respect, ese jugador lo gana por Power.
+  ClashResult _applyRespect(
+    ClashResult result,
+    ClashStats first,
+    ClashStats second,
+  ) {
+    if (result case ClashTie(reason: TieReason.sameClass)) {
+      if (first.power == second.power) return result;
+      final stronger = first.power > second.power ? Player.one : Player.two;
+      if (hasPassive(stronger, InitialEffectKind.respect)) {
+        return ClashWin(
+          stronger == Player.one ? ClashSide.first : ClashSide.second,
+          WinReason.power,
+        );
+      }
+    }
+    return result;
+  }
+
+  /// Envía las cartas derrotadas de [loser] (Creatures seguidas de sus
+  /// Items) al Trophy Stack del rival.
+  ///
+  /// Con Tolerance, las primeras 3 Creatures derrotadas del jugador van a
+  /// su propio Discard Stack, con sus Items.
+  void _sendDefeated(Player loser, List<MatchCard> cards) {
+    final loserArea = area(loser);
+    final winnerArea = area(loser.opponent);
+    var saved = false;
+    for (final card in cards) {
+      if (card is MatchCard<Creature>) {
+        saved =
+            hasPassive(loser, InitialEffectKind.tolerance) &&
+            _toleranceUsed[loser]! < 3;
+        if (saved) _toleranceUsed[loser] = _toleranceUsed[loser]! + 1;
+      }
+      if (saved) {
+        loserArea.discard([card]);
+      } else {
+        winnerArea.addTrophies([card]);
       }
     }
   }

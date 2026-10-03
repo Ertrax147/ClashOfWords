@@ -99,7 +99,7 @@ void main() {
       match.equipItem(Player.one, itemInHand(match, Player.one));
 
       expect(match.area(Player.one).hand, isEmpty);
-      expect(match.area(Player.one).creatureInPlay!.item!.card, fireAxe);
+      expect(match.area(Player.one).creatureInPlay!.items.single.card, fireAxe);
     });
 
     test('rejects an item whose class does not match', () {

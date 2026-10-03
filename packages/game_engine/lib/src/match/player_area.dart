@@ -132,6 +132,14 @@ final class PlayerArea {
   @internal
   bool removeFromDiscard(MatchCard card) => _discardStack.remove(card);
 
+  /// Quita [card] del Deck. Devuelve `false` si no estaba ahí.
+  @internal
+  bool removeFromDeck(MatchCard card) => _deck.remove(card);
+
+  /// Baraja el Deck con [random].
+  @internal
+  void shuffleDeck(Random random) => _deck.shuffle(random);
+
   /// Pone [card] en el Deck y lo baraja con [random].
   @internal
   void shuffleIntoDeck(MatchCard card, Random random) {

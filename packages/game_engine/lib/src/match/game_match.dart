@@ -284,6 +284,9 @@ final class GameMatch {
       InitialEffectKind.responsibility =>
         discard.whereType<MatchCard<Item>>().toList(),
       InitialEffectKind.loyalty => area(player.opponent).trophyCreatures,
+      InitialEffectKind.creativity => area(
+        player,
+      ).deck.whereType<MatchCard<Creature>>().toList(),
       _ => const [],
     };
   }
@@ -328,7 +331,8 @@ final class GameMatch {
     switch (kind) {
       case InitialEffectKind.recycle ||
           InitialEffectKind.responsibility ||
-          InitialEffectKind.loyalty:
+          InitialEffectKind.loyalty ||
+          InitialEffectKind.creativity:
         final options = activeOptions(player);
         if (options.isEmpty) return InvalidPlayReason.noValidTarget;
         if (choice != null &&
@@ -377,15 +381,26 @@ final class GameMatch {
   ///   Stack junto con sus Items, y el rival pierde esos trofeos.
   /// - Honesty: [choice] es un [ReorderChoice] con el nuevo orden de las
   ///   [honestyCount] cartas superiores de cada Deck (ver [honestyCards]).
+  /// - Creativity: [choice] es la Creature de su Deck que juega. Reemplaza a
+  ///   la que estaba en la mesa, que va con su Item a su Discard Stack sin
+  ///   ser trofeo. Luego baraja el Deck.
+  ///
+  /// Devuelve las cartas que reveló cada jugador por el camino (vacío casi
+  /// siempre). Solo Creativity puede revelar: si un Effect del rival saca de
+  /// la mesa a la Creature jugada, se revela otra, y si el Deck se agota la
+  /// partida termina.
   ///
   /// Lanza un [InvalidPlayException] si la jugada no está permitida (ver
   /// [checkUseInitialEffect]).
-  void useInitialEffect(
+  Map<Player, List<MatchCard>> useInitialEffect(
     Player player, [
     InitialEffectChoice choice = const NoChoice(),
   ]) {
     final reason = checkUseInitialEffect(player, choice);
     if (reason != null) throw InvalidPlayException(reason);
+    final revealed = {
+      for (final player in Player.values) player: <MatchCard>[],
+    };
     switch (activeKindOf(player)!) {
       case InitialEffectKind.recycle || InitialEffectKind.responsibility:
         // La validación garantiza que es una CardChoice del Discard Stack.
@@ -408,10 +423,21 @@ final class GameMatch {
         final order = choice as ReorderChoice;
         area(player).reorderTop(order.own);
         area(player.opponent).reorderTop(order.enemy);
+      case InitialEffectKind.creativity:
+        // La validación garantiza que es una Creature del Deck.
+        final creature = (choice as CardChoice).card as MatchCard<Creature>;
+        final area = this.area(player);
+        area.removeFromDeck(creature);
+        area.discard(area.removeFromPlay());
+        _enterPlay(player, creature);
+        area.shuffleDeck(_random);
+        // Un Effect rival puede sacar a la nueva Creature de la mesa.
+        if (!_fillCreature(player, revealed[player]!)) _finish();
       case final kind:
         throw UnimplementedError('Active ability of ${kind.name}');
     }
     _activeUsed.add(player);
+    return revealed;
   }
 
   /// Indica si hay un Tie sin resolver: el próximo Clash define también
@@ -671,13 +697,19 @@ final class GameMatch {
       if (card == null) return false;
       revealed.add(card);
       if (card is MatchCard<Creature>) {
-        area.putInPlay(card, order: _nextOrder++);
-        if (_classesSeen[player]!.add(card.card.cardClass)) {
-          _firstOfTheirClass.add(card);
-        }
+        _enterPlay(player, card);
       } else {
         area.addToHand(card);
       }
+    }
+  }
+
+  /// Pone a [creature] en la mesa de [player] y registra su entrada para
+  /// los Initial Effects pasivos (Diversity).
+  void _enterPlay(Player player, MatchCard<Creature> creature) {
+    area(player).putInPlay(creature, order: _nextOrder++);
+    if (_classesSeen[player]!.add(creature.card.cardClass)) {
+      _firstOfTheirClass.add(creature);
     }
   }
 

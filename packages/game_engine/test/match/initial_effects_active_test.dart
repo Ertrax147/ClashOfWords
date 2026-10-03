@@ -530,6 +530,158 @@ void main() {
     });
   });
 
+  group('Creativity', () {
+    MatchCard cardNamed(List<MatchCard> cards, String name) =>
+        cards.firstWhere((card) => card.card.name == name);
+
+    /// Partida en la que Pup (Power 1) está en la mesa con un Flags Jacket
+    /// en la Hand, y en el Deck hay otro Item y dos Creatures.
+    GameMatch creativityMatch() => matchOf(
+      [
+        flagsJacket,
+        common('Pup', traveler, 1),
+        flagsJacket,
+        common('Wolf', wild, 5),
+        common('Third', wild, 2),
+      ],
+      [common('Rock', warrior, 1), common('Stone', warrior, 1)],
+      oneEffect: initialEffectOf(InitialEffectKind.creativity),
+      twoEffect: initialEffectOf(InitialEffectKind.diversity),
+    )..revealCreatures();
+
+    test('offers only the creatures of the own deck', () {
+      final match = creativityMatch();
+
+      expect(names(match.activeOptions(Player.one)), ['Wolf', 'Third']);
+    });
+
+    test('plays the chosen creature in place of the one on the table', () {
+      final match = creativityMatch();
+      final wolf = cardNamed(match.activeOptions(Player.one), 'Wolf');
+
+      match.useInitialEffect(Player.one, CardChoice(wolf));
+
+      final area = match.area(Player.one);
+      expect(area.creatureInPlay!.creature, wolf);
+      expect(names(area.discardStack), ['Pup']);
+      expect(names(area.deck), unorderedEquals(['Flags Jacket', 'Third']));
+      expect(match.statsOf(Player.one)!.power, 5);
+      expect(match.hasUsedActive(Player.one), isTrue);
+    });
+
+    test('the replaced creature and its item are not trophies', () {
+      final match = creativityMatch();
+      match.equipItem(Player.one, itemInHand(match, Player.one));
+      final wolf = cardNamed(match.activeOptions(Player.one), 'Wolf');
+
+      match.useInitialEffect(Player.one, CardChoice(wolf));
+
+      expect(names(match.area(Player.one).discardStack), [
+        'Pup',
+        'Flags Jacket',
+      ]);
+      expect(match.area(Player.two).trophyStack, isEmpty);
+    });
+
+    test('the new creature fights the clash, which it can win', () {
+      final match = creativityMatch();
+      final wolf = cardNamed(match.activeOptions(Player.one), 'Wolf');
+      match.useInitialEffect(Player.one, CardChoice(wolf));
+
+      final result = match.resolveClash();
+
+      expect(result, isA<ClashWin>());
+      expect(names(match.area(Player.one).trophyStack), ['Rock']);
+    });
+
+    test('rejects an item of the deck and a creature that is not there', () {
+      final match = creativityMatch();
+      final jacket = match.area(Player.one).deck.first;
+      final rock = match.area(Player.two).creatureInPlay!.creature;
+
+      expect(
+        match.checkUseInitialEffect(Player.one, CardChoice(jacket)),
+        InvalidPlayReason.invalidChoice,
+      );
+      expect(
+        match.checkUseInitialEffect(Player.one, CardChoice(rock)),
+        InvalidPlayReason.invalidChoice,
+      );
+    });
+
+    test('is not usable if the deck has no creatures', () {
+      final match = matchOf(
+        [common('Pup', traveler, 1), flagsJacket],
+        [common('Rock', warrior, 3)],
+        oneEffect: initialEffectOf(InitialEffectKind.creativity),
+      )..revealCreatures();
+
+      expect(
+        match.checkUseInitialEffect(Player.one),
+        InvalidPlayReason.noValidTarget,
+      );
+    });
+
+    group('against an Effect that removes creatures', () {
+      /// El jugador dos juega Ugly Theater ("Move the enemy Artist creature
+      /// to the Discard stack"). Pup no es Artist, así que sigue en la mesa.
+      GameMatch theaterMatch(List<GameCard> one) {
+        final match = matchOf(
+          one,
+          [uglyTheater, common('Rock', warrior, 3)],
+          oneEffect: initialEffectOf(InitialEffectKind.creativity),
+        )..revealCreatures();
+        match.playEffect(
+          Player.two,
+          match.area(Player.two).hand.single as MatchCard<Effect>,
+        );
+        return match;
+      }
+
+      test('reveals another creature if the chosen one is removed', () {
+        final match = theaterMatch([
+          common('Pup', traveler, 1),
+          relaxingMarkers,
+          common('Third', wild, 2),
+        ]);
+        final markers = cardNamed(
+          match.activeOptions(Player.one),
+          'Relaxing Markers',
+        );
+
+        final revealed = match.useInitialEffect(
+          Player.one,
+          CardChoice(markers),
+        );
+
+        expect(names(revealed[Player.one]!), ['Third']);
+        expect(names(match.area(Player.one).discardStack), [
+          'Pup',
+          'Relaxing Markers',
+        ]);
+        expect(names([match.area(Player.one).creatureInPlay!.creature]), [
+          'Third',
+        ]);
+        expect(match.area(Player.two).trophyStack, isEmpty);
+      });
+
+      test('ends the game if there is nothing left to reveal', () {
+        final match = theaterMatch([
+          common('Pup', traveler, 1),
+          relaxingMarkers,
+        ]);
+        final markers = cardNamed(
+          match.activeOptions(Player.one),
+          'Relaxing Markers',
+        );
+
+        match.useInitialEffect(Player.one, CardChoice(markers));
+
+        expect(match.phase, MatchPhase.finished);
+      });
+    });
+  });
+
   group('Responsibility active ability', () {
     /// Partida en la que Bag, con Flags Jacket, venció a Rock y ambas
     /// cartas están en el Discard Stack del jugador uno. Queda en la fase de

@@ -1,0 +1,12 @@
+name: game_engine
+description: Clash of Words game rules, in pure Dart with no Flutter dependency (RNF-09).
+publish_to: none
+
+environment:
+  sdk: ^3.11.4
+
+resolution: workspace
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

@@ -4,6 +4,7 @@
 /// almacenamiento (RNF-09).
 library;
 
+export 'src/entities/ability.dart';
 export 'src/entities/card_class.dart';
 export 'src/entities/clash_duration.dart';
 export 'src/entities/game_card.dart';

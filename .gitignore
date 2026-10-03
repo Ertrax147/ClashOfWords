@@ -18,7 +18,7 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# VS Code: shared settings may be committed later if the team agrees
+# VS Code: se puede subir una configuración compartida más adelante si el equipo lo acuerda
 .vscode/
 
 # Flutter/Dart/Pub related

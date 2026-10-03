@@ -6,7 +6,7 @@ import 'app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // The app is designed for tablets in landscape only (RNF-09).
+  // La app está diseñada solo para tablets en horizontal (RNF-09).
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,

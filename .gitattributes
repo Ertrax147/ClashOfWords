@@ -1,6 +1,6 @@
-# Normalize text files to LF in the repository, regardless of each developer's OS.
+# Guarda los archivos de texto con LF en el repositorio, sin importar el sistema operativo de cada integrante.
 * text=auto eol=lf
 
-# Windows scripts need CRLF to run correctly.
+# Los scripts de Windows necesitan CRLF para funcionar.
 *.bat text eol=crlf
 *.cmd text eol=crlf

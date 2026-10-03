@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         applicationId = "cl.ufro.clashofwords"
-        // Android 8.0 (API 26) is the minimum supported version (RNF-09).
+        // Android 8.0 (API 26) es la versión mínima soportada (RNF-09).
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

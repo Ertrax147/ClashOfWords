@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:game_engine/game_engine.dart';
 
+import '../../catalog/domain/card_catalog.dart';
 import 'match_controller.dart';
 import 'widgets/card_piles.dart';
 import 'widgets/card_view.dart';
@@ -285,13 +286,20 @@ class _CreatureSlot extends StatelessWidget {
     final match = view.match;
     final inPlay = match.area(player).creatureInPlay;
     final stats = match.statsOf(player);
+    final tied = match
+        .area(player)
+        .tiedCards
+        .whereType<MatchCard<Creature>>()
+        .toList();
     const peek = 14.0;
 
     return SizedBox(
       width: height * cardAspectRatio + 170,
       child: Row(
         children: [
-          if (inPlay == null)
+          if (inPlay == null && tied.isNotEmpty)
+            _TiedPile(cards: tied, catalog: view.catalog, height: height)
+          else if (inPlay == null)
             EmptyCardSlot(height: height, label: 'Creature')
           else
             SizedBox(
@@ -356,9 +364,82 @@ class _CreatureSlot extends StatelessWidget {
                       shadows: _shadow,
                     ),
                   ),
+                  if (tied.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _TiedPile(
+                      cards: tied,
+                      catalog: view.catalog,
+                      height: height * 0.4,
+                    ),
+                  ],
                 ],
               ),
             ),
+          if (inPlay == null && tied.isNotEmpty)
+            const Expanded(
+              child: Text(
+                'Waiting for the next Clash to break the tie',
+                style: TextStyle(color: Colors.amberAccent, shadows: _shadow),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Creatures apartadas por un Tie, apiladas con una etiqueta "Tie". Se
+/// quedan en la mesa hasta que un nuevo Clash decida a quién le
+/// corresponden (CU-04).
+class _TiedPile extends StatelessWidget {
+  const _TiedPile({
+    required this.cards,
+    required this.catalog,
+    required this.height,
+  });
+
+  final List<MatchCard<Creature>> cards;
+  final CardCatalog catalog;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final offset = height * 0.12;
+    return SizedBox(
+      height: height + offset * (cards.length - 1),
+      width: height * cardAspectRatio + offset * (cards.length - 1),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = 0; i < cards.length; i++)
+            Positioned(
+              left: offset * i,
+              top: offset * i,
+              child: CardView(
+                card: cards[i].card,
+                catalog: catalog,
+                height: height,
+              ),
+            ),
+          Positioned(
+            left: -4,
+            top: -8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.amber,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                cards.length == 1 ? 'Tie' : 'Tie ×${cards.length}',
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

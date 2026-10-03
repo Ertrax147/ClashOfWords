@@ -192,11 +192,41 @@ class MatchController extends Notifier<MatchViewState?> {
   }
 
   /// Resuelve el Clash actual.
+  ///
+  /// Si el perdedor tiene Tolerance y sus Creatures derrotadas vuelven a su
+  /// Discard Stack en vez de ser trofeos, lo explica en el registro: si no,
+  /// parecería que el ganador no recibió nada.
   void clash() {
     final current = state;
     if (current == null) return;
-    final result = current.match.resolveClash();
-    _update([describe(result)], lastResult: result);
+    final match = current.match;
+    final discardsBefore = {
+      for (final player in Player.values)
+        player: match.area(player).discardStack.length,
+    };
+
+    final result = match.resolveClash();
+    final messages = [describe(result)];
+    if (result case ClashWin(:final winner)) {
+      final loser = winner == ClashSide.first ? Player.two : Player.one;
+      if (match.hasPassive(loser, InitialEffectKind.tolerance)) {
+        final saved = match
+            .area(loser)
+            .discardStack
+            .skip(discardsBefore[loser]!)
+            .whereType<MatchCard<Creature>>()
+            .map((card) => card.card.name)
+            .toList();
+        if (saved.isNotEmpty) {
+          final whose = loser == humanPlayer ? 'Your' : "Opponent's";
+          final where = loser == humanPlayer
+              ? 'your Discard Stack instead of the Trophy Stack'
+              : "their Discard Stack instead of your Trophy Stack";
+          messages.add('$whose Tolerance sends ${saved.join(', ')} to $where.');
+        }
+      }
+    }
+    _update(messages, lastResult: result);
   }
 
   void _update(

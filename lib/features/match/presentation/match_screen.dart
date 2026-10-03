@@ -5,6 +5,7 @@ import 'package:game_engine/game_engine.dart';
 import 'match_controller.dart';
 import 'widgets/card_piles.dart';
 import 'widgets/card_view.dart';
+import 'widgets/event_overlay.dart';
 import 'widgets/wood_background.dart';
 
 /// Pantalla de una partida contra el sistema (RF-04, RF-15).
@@ -25,40 +26,67 @@ class MatchScreen extends ConsumerWidget {
     if (view == null) {
       return const Scaffold(body: Center(child: Text('No match started.')));
     }
+    final events = view.events;
     return Scaffold(
-      body: WoodBackground(
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              const middleStrip = 40.0;
-              const gap = 8.0;
-              final cardHeight =
-                  ((constraints.maxHeight - middleStrip - 5 * gap) / 4).clamp(
-                    60.0,
-                    240.0,
+      body: Stack(
+        children: [
+          WoodBackground(
+            child: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final cardHeight = _cardHeightFor(constraints);
+                  return Row(
+                    children: [
+                      _TrophyColumn(view: view, cardHeight: cardHeight * 0.7),
+                      Expanded(
+                        // Si la ventana es angosta, la mesa se achica en
+                        // vez de salirse de la pantalla.
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: _Board(
+                            view: view,
+                            cardHeight: cardHeight,
+                            gap: _gap,
+                            middleStrip: _middleStrip,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: _sidePanelWidth,
+                        child: _SidePanel(view: view, cardHeight: cardHeight),
+                      ),
+                    ],
                   );
-              return Row(
-                children: [
-                  _TrophyColumn(view: view, cardHeight: cardHeight * 0.7),
-                  Expanded(
-                    child: _Board(
-                      view: view,
-                      cardHeight: cardHeight,
-                      gap: gap,
-                      middleStrip: middleStrip,
-                    ),
-                  ),
-                  SizedBox(
-                    width: 340,
-                    child: _SidePanel(view: view, cardHeight: cardHeight),
-                  ),
-                ],
-              );
-            },
+                },
+              ),
+            ),
           ),
-        ),
+          if (events.isNotEmpty)
+            Positioned.fill(
+              child: EventOverlay(
+                key: ObjectKey(events.first),
+                event: events.first,
+                catalog: view.catalog,
+                onDone: ref.read(matchControllerProvider.notifier).dismissEvent,
+              ),
+            ),
+        ],
       ),
     );
+  }
+
+  static const _middleStrip = 40.0;
+  static const _gap = 8.0;
+  static const _sidePanelWidth = 340.0;
+
+  /// Altura de las cartas de la mesa: la mayor que cabe a lo alto (4 filas)
+  /// y a lo ancho (Trophy Stacks, 3 columnas de cartas y los valores de la
+  /// Creature).
+  static double _cardHeightFor(BoxConstraints constraints) {
+    final byHeight = (constraints.maxHeight - _middleStrip - 5 * _gap) / 4;
+    // Ancho necesario ≈ 3,2 alturas de carta + 260 px fijos.
+    final byWidth = (constraints.maxWidth - _sidePanelWidth - 260) / 3.2;
+    return [byHeight, byWidth].reduce((a, b) => a < b ? a : b).clamp(60, 240);
   }
 }
 

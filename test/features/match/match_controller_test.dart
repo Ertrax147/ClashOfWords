@@ -69,6 +69,43 @@ void main() {
     }
   });
 
+  test('revealing queues one event per card, shown one at a time', () {
+    final container = containerWithSeed(1);
+    final controller = container.read(matchControllerProvider.notifier)
+      ..startMatch(catalog)
+      ..reveal();
+
+    final view = container.read(matchControllerProvider)!;
+    final revealed = view.log.where((line) => line.contains('revealed'));
+    expect(view.events.length, greaterThanOrEqualTo(revealed.length));
+    expect(view.events.first.caption, contains('revealed'));
+
+    final pending = view.events.length;
+    controller.dismissEvent();
+
+    expect(
+      container.read(matchControllerProvider)!.events,
+      hasLength(pending - 1),
+    );
+  });
+
+  test('a revealed card says where it goes', () {
+    final container = containerWithSeed(1);
+    container.read(matchControllerProvider.notifier)
+      ..startMatch(catalog)
+      ..reveal();
+
+    final captions = container
+        .read(matchControllerProvider)!
+        .events
+        .map((event) => event.caption);
+
+    expect(
+      captions.where((caption) => caption.contains('revealed')),
+      everyElement(anyOf(contains('to the Clash'), contains('hand'))),
+    );
+  });
+
   test('an invalid play explains why in English', () {
     final container = containerWithSeed(1);
     final controller = container.read(matchControllerProvider.notifier)

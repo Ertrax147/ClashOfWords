@@ -15,6 +15,19 @@ const systemPlayer = Player.two;
 /// por uno con semilla fija para que las partidas sean reproducibles.
 final matchRandomProvider = Provider<Random>((ref) => Random());
 
+/// Algo que pasó en la mesa y que la pantalla muestra con calma, una carta
+/// a la vez: una carta revelada o una carta que jugó el rival.
+class MatchEvent {
+  /// Crea el evento de [card] con su [caption] en inglés.
+  const MatchEvent({required this.card, required this.caption});
+
+  /// Carta que se muestra en grande.
+  final GameCard card;
+
+  /// Frase que explica qué pasó, por ejemplo "You revealed Farm Drugstore".
+  final String caption;
+}
+
 /// Estado de la pantalla de partida.
 ///
 /// [GameMatch] cambia por dentro al jugar, así que cada acción crea un
@@ -27,7 +40,12 @@ class MatchViewState {
     required this.log,
     required this.revision,
     this.lastResult,
+    this.events = const [],
   });
+
+  /// Eventos que la pantalla todavía no termina de mostrar, en orden. Mientras
+  /// haya alguno, los botones de la partida esperan.
+  final List<MatchEvent> events;
 
   /// Partida en curso.
   final GameMatch match;
@@ -82,24 +100,57 @@ class MatchController extends Notifier<MatchViewState?> {
     final current = state;
     if (current == null) return;
     final match = current.match;
-    final messages = <String>[];
+    final events = <MatchEvent>[];
 
     final revealed = match.revealCreatures();
     for (final player in Player.values) {
       for (final card in revealed[player]!) {
-        messages.add('${_who(player)} revealed ${card.card.name}.');
+        events.add(_revealEvent(player, card));
       }
     }
     if (match.phase == MatchPhase.play) {
       for (final play in _opponent.playTurn(match)) {
-        messages.add(switch (play) {
-          EquippedItem(:final card) => 'Opponent equipped ${card.card.name}.',
-          PlayedEffect(:final card) => 'Opponent played ${card.card.name}.',
+        events.add(switch (play) {
+          EquippedItem(:final card) => MatchEvent(
+            card: card.card,
+            caption: 'Opponent equipped ${card.card.name}',
+          ),
+          PlayedEffect(:final card) => MatchEvent(
+            card: card.card,
+            caption: 'Opponent played ${card.card.name}',
+          ),
         });
       }
     }
-    if (match.phase == MatchPhase.finished) messages.add(_endMessage(match));
-    _update(messages);
+    _update([
+      for (final event in events) '${event.caption}.',
+      if (match.phase == MatchPhase.finished) _endMessage(match),
+    ], newEvents: events);
+  }
+
+  /// Marca como visto el primer evento de la cola.
+  void dismissEvent() {
+    final current = state;
+    if (current == null || current.events.isEmpty) return;
+    state = MatchViewState(
+      match: current.match,
+      catalog: current.catalog,
+      log: current.log,
+      revision: current.revision + 1,
+      lastResult: current.lastResult,
+      events: current.events.sublist(1),
+    );
+  }
+
+  MatchEvent _revealEvent(Player player, MatchCard card) {
+    final destination = switch (card) {
+      MatchCard<Creature>() => 'to the Clash',
+      _ => player == humanPlayer ? 'to your hand' : "to the opponent's hand",
+    };
+    return MatchEvent(
+      card: card.card,
+      caption: '${_who(player)} revealed ${card.card.name} → $destination',
+    );
   }
 
   /// Juega [card] de la Hand del jugador: equipa un Item o juega un
@@ -112,6 +163,7 @@ class MatchController extends Notifier<MatchViewState?> {
     if (current == null) return null;
     final match = current.match;
     final messages = <String>[];
+    final events = <MatchEvent>[];
 
     switch (card) {
       case MatchCard<Item>():
@@ -125,7 +177,9 @@ class MatchController extends Notifier<MatchViewState?> {
         final revealed = match.playEffect(humanPlayer, card);
         messages.add('You played ${card.card.name}.');
         for (final replacement in revealed[systemPlayer]!) {
-          messages.add('Opponent revealed ${replacement.card.name}.');
+          final event = _revealEvent(systemPlayer, replacement);
+          events.add(event);
+          messages.add('${event.caption}.');
         }
         if (match.phase == MatchPhase.finished) {
           messages.add(_endMessage(match));
@@ -133,7 +187,7 @@ class MatchController extends Notifier<MatchViewState?> {
       default:
         return 'This card cannot be played.';
     }
-    _update(messages);
+    _update(messages, newEvents: events);
     return null;
   }
 
@@ -145,7 +199,11 @@ class MatchController extends Notifier<MatchViewState?> {
     _update([describe(result)], lastResult: result);
   }
 
-  void _update(List<String> messages, {ClashResult? lastResult}) {
+  void _update(
+    List<String> messages, {
+    ClashResult? lastResult,
+    List<MatchEvent> newEvents = const [],
+  }) {
     final current = state!;
     state = MatchViewState(
       match: current.match,
@@ -153,6 +211,7 @@ class MatchController extends Notifier<MatchViewState?> {
       log: [...current.log, ...messages],
       revision: current.revision + 1,
       lastResult: lastResult ?? current.lastResult,
+      events: [...current.events, ...newEvents],
     );
   }
 

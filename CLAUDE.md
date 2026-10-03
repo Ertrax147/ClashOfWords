@@ -53,6 +53,19 @@ Definidas a partir de las cartas y del manual, porque el SRS no las recoge. Pend
 - "Your enemy cannot play Effects/Items" impide jugar cartas nuevas, pero no cancela las que ya están en juego.
 - Si el manual se contradice sobre a dónde van las Creatures tras un Clash, manda el Paso 5: ganadora al Discard Stack de su dueño y perdedora al Trophy Stack del rival.
 
+### Initial Effects pasivos
+
+Interpretaciones del equipo, porque el manual no da detalles. Pendientes de validar con Orlando.
+
+- Diversity: la primera Creature de cada Class que entra en juego tiene +2 mientras siga en la mesa; las siguientes de esa Class, no.
+- Tolerance: cuentan todas las derrotas, incluidas las de resolver un Tie. El Item acompaña a su Creature al Discard Stack.
+- Responsibility (pasiva): sin límite de Items por Creature. Cada Item suma su Power; de Rarity y Duration se queda la mayor.
+- Respect: si hay Tie por Class y su Creature tiene más Power, gana. Con igual Power sigue siendo Tie.
+- Justice: +1 por cada Clash perdido desde la última victoria. Los Ties no suman ni reinician.
+- Friendship: +3 solo en el Clash que sigue a un Tie. No se acumula con varios Ties seguidos.
+- Excellence: +1 solo en el Clash que sigue a una victoria, aunque pelee la misma Creature.
+- Empathy: copia el Initial Effect del rival, pasivo o activo (el activo se puede usar una vez). Si ambos tienen Empathy, no copia nada.
+
 ## Flujo de Git
 
 - `main`: estable y entregable. No se trabaja directo en ella; solo recibe merges desde `dev`.

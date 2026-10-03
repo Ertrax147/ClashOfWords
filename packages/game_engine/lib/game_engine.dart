@@ -4,6 +4,8 @@
 /// almacenamiento (RNF-09).
 library;
 
+export 'src/ai/easy_opponent.dart';
+export 'src/ai/random_deck.dart';
 export 'src/entities/ability.dart';
 export 'src/entities/card_class.dart';
 export 'src/entities/clash_duration.dart';

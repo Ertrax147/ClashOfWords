@@ -6,6 +6,7 @@ App móvil educativa para tablets Android que digitaliza un juego de cartas fís
 
 - Requisitos: `docs/SRS.md` (IEEE 830: RF-01 a RF-18, RNF-01 a RNF-10, CU-01 a CU-11). Es largo: leer solo la sección o el requisito que se esté implementando.
 - Reglas del juego: el manual de Orlando no está en el repositorio (es su material). Las reglas relevantes están en docs/SRS.md (RF-04, RF-10) y en las decisiones de más abajo. Si hay dudas, preguntar al usuario.
+- RF-04 y RF-10 del SRS están desactualizados en lo que cubre la sección "Duration, Rarity y Class de Items": mientras no se corrija el SRS, mandan esas decisiones.
 - Si el código y el SRS se contradicen, avisar y no decidir solo.
 
 ## Stack y restricciones
@@ -27,6 +28,18 @@ App móvil educativa para tablets Android que digitaliza un juego de cartas fís
 - Desconexión en 1 vs 1: pausa de 60 segundos; si no se recupera, se cancela sin intercambio ni registro.
 - Sobres de 3 cartas a 50 coins. Probabilidades por defecto: Common 50 %, Uncommon 25 %, Rare 15 %, Epic 8 %, Legendary 2 %. Las coins solo se obtienen con códigos del profesor.
 - Fuera de alcance por ahora: modos adaptados para distintas habilidades, juego en línea por internet, validación de pronunciación con micrófono.
+
+### Duration, Rarity y Class de Items
+
+Definidas a partir de las cartas y del manual, porque el SRS no las recoge. Pendientes de validar con Orlando.
+
+- Una Creature sin Duration dura 1 Clash. Con Duration N, la ganadora sigue en juego y enfrenta a la siguiente Creature del rival hasta completar N Clashes; luego va al Discard Stack de su dueño. Duration ∞: sigue hasta perder o hasta que termine la partida.
+- La Duration se descuenta en cada Clash en que participa la Creature, gane o empate (un Tie cuenta como Clash).
+- Si pierde, va al Trophy Stack del rival aunque le quede Duration. Su Item sigue equipado mientras ella esté en juego y la acompaña a la pila que corresponda.
+- La Duration que aparece en un Item es la que otorga a su Creature, no la duración del Item.
+- Items, Effects e Initial Effects pueden cambiar la Rarity o la Duration de una Creature. Se conserva siempre la mayor entre la que tenía y la que recibe: nunca empeoran a la Creature. Los modificadores de un Item valen mientras esté equipado; los de un Effect, mientras dure.
+- Los Items Epic y Legendary no tienen Class y pueden equiparse a cualquier Creature. Un Item con Class solo se equipa a una Creature que comparta al menos una Class con él.
+- Si el manual se contradice sobre a dónde van las Creatures tras un Clash, manda el Paso 5: ganadora al Discard Stack de su dueño y perdedora al Trophy Stack del rival.
 
 ## Flujo de Git
 

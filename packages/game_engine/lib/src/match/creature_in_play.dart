@@ -13,11 +13,18 @@ import 'match_card.dart';
 /// sigue en la mesa y enfrenta a la siguiente Creature del rival.
 final class CreatureInPlay {
   /// Pone en juego a [creature], sin Item y con su Duration impresa.
+  ///
+  /// [order] indica en qué momento de la partida entró, para aplicar sus
+  /// habilidades en orden junto con los Effects.
   @internal
-  CreatureInPlay(this.creature) : _remaining = creature.card.duration;
+  CreatureInPlay(this.creature, {this.order = 0})
+    : _remaining = creature.card.duration;
 
   /// Copia de la Creature que está en juego.
   final MatchCard<Creature> creature;
+
+  /// Momento de la partida en que entró en juego.
+  final int order;
 
   MatchCard<Item>? _item;
   ClashDuration? _remaining;
@@ -33,8 +40,10 @@ final class CreatureInPlay {
   /// Indica si ya agotó su Duration.
   bool get isExhausted => _remaining == null;
 
-  /// Valores con los que pelea el próximo Clash, con su Item aplicado.
-  ClashStats get stats => ClashStats.of(creature.card, item: _item?.card);
+  /// Valores de la Creature con su Item aplicado, sin Effects ni otras
+  /// habilidades. Los valores finales del Clash los calcula la partida
+  /// ([GameMatch.statsOf]).
+  ClashStats get stats => ClashStats.equipped(creature.card, _item?.card);
 
   /// Equipa [item] a la Creature.
   ///

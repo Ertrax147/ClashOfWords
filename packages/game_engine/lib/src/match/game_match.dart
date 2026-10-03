@@ -1,8 +1,11 @@
 import 'dart:math';
 
+import '../entities/ability.dart';
 import '../entities/game_card.dart';
 import '../rules/clash_resolver.dart';
 import '../rules/clash_resolver.dart' as rules show resolveClash;
+import '../rules/clash_stats.dart';
+import 'effect_in_play.dart';
 import 'match_card.dart';
 import 'player.dart';
 import 'player_area.dart';
@@ -59,8 +62,16 @@ enum InvalidPlayReason {
   /// La Creature ya tiene un Item equipado. Solo puede llevar uno (RF-10).
   creatureAlreadyHasItem,
 
-  /// La Class de la Creature no está entre las Class del Item (RF-10).
+  /// Ninguna Class de la Creature está entre las Class del Item (RF-10).
   classMismatch,
+
+  /// El Item no puede usarlo una Creature de esa Rarity, por ejemplo Gift of
+  /// Eternity con una Creature Legendary.
+  forbiddenRarity,
+
+  /// Una habilidad del rival lo prohíbe, por ejemplo "Your enemy cannot play
+  /// Effects".
+  forbiddenByEnemy,
 }
 
 /// Error que se produce al intentar una jugada no permitida.
@@ -153,6 +164,10 @@ final class GameMatch {
   final Map<Player, PlayerArea> _areas;
   MatchPhase _phase = MatchPhase.reveal;
 
+  /// Contador que marca el orden en que entran en juego Creatures y
+  /// Effects, para aplicar sus habilidades en ese orden.
+  int _nextOrder = 0;
+
   /// Crea la copia de [card] con el tipo exacto de la carta, para que el
   /// motor pueda distinguir Creatures, Items y Effects.
   static MatchCard _matchCardOf(int id, GameCard card, Player owner) =>
@@ -192,8 +207,11 @@ final class GameMatch {
   /// Revela cartas hasta que cada jugador tenga una Creature en la mesa.
   ///
   /// Un jugador cuya Creature sigue en juego por su Duration no revela. Los
-  /// Items y Effects revelados van a la Hand de su dueño. Si un jugador
-  /// necesita revelar y se queda sin cartas en el Deck, la partida termina.
+  /// Items y Effects revelados van a la Hand de su dueño. Si un Effect del
+  /// rival saca de la mesa a la Creature revelada (por ejemplo, "Move the
+  /// enemy Artist creature to the Discard stack"), va al Discard Stack de su
+  /// dueño y se revela otra. Si un jugador necesita revelar y se queda sin
+  /// cartas en el Deck, la partida termina.
   ///
   /// Devuelve las cartas que reveló cada jugador, en orden, para que la
   /// interfaz pueda mostrarlas. Lanza un [StateError] si la partida no está
@@ -204,22 +222,8 @@ final class GameMatch {
       for (final player in Player.values) player: <MatchCard>[],
     };
     var someoneRanOut = false;
-
     for (final player in Player.values) {
-      final area = this.area(player);
-      while (area.creatureInPlay == null) {
-        final card = area.drawTop();
-        if (card == null) {
-          someoneRanOut = true;
-          break;
-        }
-        revealed[player]!.add(card);
-        if (card is MatchCard<Creature>) {
-          area.putInPlay(card);
-        } else {
-          area.addToHand(card);
-        }
-      }
+      if (!_fillCreature(player, revealed[player]!)) someoneRanOut = true;
     }
 
     if (someoneRanOut) {
@@ -230,18 +234,40 @@ final class GameMatch {
     return revealed;
   }
 
+  /// Valores efectivos con que la Creature de [player] pelearía el Clash
+  /// ahora, o `null` si no tiene Creature en la mesa.
+  ///
+  /// Incluye su Item y las habilidades en juego de ambos jugadores: Effects
+  /// y habilidades de Creatures. La interfaz puede usarlo para mostrar el
+  /// Power y la Rarity actuales.
+  ClashStats? statsOf(Player player) {
+    final inPlay = area(player).creatureInPlay;
+    if (inPlay == null) return null;
+    return inPlay.stats.applyModifiers(_modifiersAffecting(player));
+  }
+
   /// Indica por qué [player] no puede equipar [item], o `null` si sí puede.
   ///
-  /// Sirve para que la interfaz desactive las jugadas no permitidas.
+  /// La Class y la Rarity se revisan con los valores efectivos de la
+  /// Creature: si un Effect le agregó una Class, puede equipar Items de esa
+  /// Class. Sirve para que la interfaz desactive las jugadas no permitidas.
   InvalidPlayReason? checkEquipItem(Player player, MatchCard<Item> item) {
     if (_phase != MatchPhase.play) return InvalidPlayReason.wrongPhase;
     final area = this.area(player);
     if (!area.hand.contains(item)) return InvalidPlayReason.notInHand;
     final inPlay = area.creatureInPlay;
     if (inPlay == null) return InvalidPlayReason.noCreatureInPlay;
+    if (_enemyForbids(player, items: true)) {
+      return InvalidPlayReason.forbiddenByEnemy;
+    }
     if (inPlay.item != null) return InvalidPlayReason.creatureAlreadyHasItem;
-    if (!item.card.canBeEquippedTo(inPlay.creature.card)) {
+    final stats = statsOf(player)!;
+    if (!item.card.isUniversal &&
+        !item.card.classes.any(stats.classes.contains)) {
       return InvalidPlayReason.classMismatch;
+    }
+    if (item.card.forbiddenRarities.contains(stats.rarity)) {
+      return InvalidPlayReason.forbiddenRarity;
     }
     return null;
   }
@@ -256,6 +282,46 @@ final class GameMatch {
     final area = this.area(player);
     area.removeFromHand(item);
     area.creatureInPlay!.equip(item);
+  }
+
+  /// Indica por qué [player] no puede jugar [effect], o `null` si sí puede.
+  InvalidPlayReason? checkPlayEffect(Player player, MatchCard<Effect> effect) {
+    if (_phase != MatchPhase.play) return InvalidPlayReason.wrongPhase;
+    if (!area(player).hand.contains(effect)) return InvalidPlayReason.notInHand;
+    if (_enemyForbids(player, effects: true)) {
+      return InvalidPlayReason.forbiddenByEnemy;
+    }
+    return null;
+  }
+
+  /// [player] juega [effect] de su Hand (RF-10).
+  ///
+  /// El Effect queda en juego desde este Clash y durante los Clashes que
+  /// indica su carta. Se pueden jugar varios en un mismo Clash.
+  ///
+  /// Si el Effect saca de la mesa a la Creature rival, ella y su Item van al
+  /// Discard Stack de su dueño y el rival revela otra para este Clash.
+  /// Devuelve las cartas que el rival reveló por eso (vacío si no reveló
+  /// ninguna). Si el rival se queda sin cartas, la partida termina.
+  ///
+  /// Lanza un [InvalidPlayException] si la jugada no está permitida (ver
+  /// [checkPlayEffect]).
+  Map<Player, List<MatchCard>> playEffect(
+    Player player,
+    MatchCard<Effect> effect,
+  ) {
+    final reason = checkPlayEffect(player, effect);
+    if (reason != null) throw InvalidPlayException(reason);
+    final area = this.area(player);
+    area.removeFromHand(effect);
+    area.addEffectInPlay(EffectInPlay(effect, order: _nextOrder++));
+
+    final revealed = {
+      for (final player in Player.values) player: <MatchCard>[],
+    };
+    final rival = player.opponent;
+    if (!_fillCreature(rival, revealed[rival]!)) _finish();
+    return revealed;
   }
 
   /// Resuelve el Clash entre las dos Creatures en la mesa (RF-04, CU-04).
@@ -273,13 +339,17 @@ final class GameMatch {
   /// Duration, y la partida vuelve a la fase de revelar para jugar un nuevo
   /// Clash. Si ese Clash también empata, se siguen acumulando.
   ///
+  /// En ambos casos, los Effects en juego descuentan un Clash y los que se
+  /// agotan van al Discard Stack de su dueño.
+  ///
   /// Lanza un [StateError] si la partida no está en la fase
   /// [MatchPhase.play].
   ClashResult resolveClash() {
     _requirePhase(MatchPhase.play);
-    final first = area(Player.one).creatureInPlay!;
-    final second = area(Player.two).creatureInPlay!;
-    final result = rules.resolveClash(first.stats, second.stats);
+    final result = rules.resolveClash(
+      statsOf(Player.one)!,
+      statsOf(Player.two)!,
+    );
 
     switch (result) {
       case ClashWin(:final winner):
@@ -301,17 +371,104 @@ final class GameMatch {
           area.setAsideTied();
         }
     }
+    for (final area in _areas.values) {
+      area.discard(area.spendEffectsClash());
+    }
     _phase = MatchPhase.reveal;
     return result;
   }
 
+  /// Revela cartas de [player] hasta que tenga una Creature en la mesa que
+  /// no saquen los Effects del rival. Agrega a [revealed] lo que reveló.
+  ///
+  /// Devuelve `false` si se quedó sin cartas antes de lograrlo.
+  bool _fillCreature(Player player, List<MatchCard> revealed) {
+    final area = this.area(player);
+    while (true) {
+      if (area.creatureInPlay != null) {
+        if (!_isDiscardedByEnemy(player)) return true;
+        area.discard(area.removeFromPlay());
+        continue;
+      }
+      final card = area.drawTop();
+      if (card == null) return false;
+      revealed.add(card);
+      if (card is MatchCard<Creature>) {
+        area.putInPlay(card, order: _nextOrder++);
+      } else {
+        area.addToHand(card);
+      }
+    }
+  }
+
+  /// Habilidades en juego de [owner], con el momento en que entraron: las de
+  /// sus Effects y las de su Creature en la mesa.
+  List<(int, Ability)> _abilitiesOf(Player owner) {
+    final area = this.area(owner);
+    final creature = area.creatureInPlay;
+    return [
+      for (final effect in area.effectsInPlay)
+        for (final ability in effect.effect.card.abilities)
+          (effect.order, ability),
+      if (creature != null)
+        for (final ability in creature.creature.card.abilities)
+          (creature.order, ability),
+    ];
+  }
+
+  /// Modificadores que afectan a la Creature de [player], en el orden en que
+  /// entraron en juego: los suyos que apuntan a sus Creatures y los del
+  /// rival que apuntan a las Creatures rivales.
+  List<StatModifier> _modifiersAffecting(Player player) {
+    final entries = [
+      for (final (order, ability) in _abilitiesOf(player))
+        if (ability is StatModifier && ability.target == AbilityTarget.own)
+          (order, ability),
+      for (final (order, ability) in _abilitiesOf(player.opponent))
+        if (ability is StatModifier && ability.target == AbilityTarget.enemy)
+          (order, ability),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    return [for (final (_, modifier) in entries) modifier];
+  }
+
+  /// Indica si una habilidad del rival saca de la mesa a la Creature de
+  /// [player].
+  bool _isDiscardedByEnemy(Player player) {
+    final stats = statsOf(player);
+    if (stats == null) return false;
+    return _abilitiesOf(player.opponent).any(
+      (entry) =>
+          entry.$2 is DiscardEnemyCreatures &&
+          stats.matches((entry.$2 as DiscardEnemyCreatures).filter),
+    );
+  }
+
+  /// Indica si una habilidad del rival le prohíbe a [player] equipar Items
+  /// ([items]) o jugar Effects ([effects]).
+  bool _enemyForbids(
+    Player player, {
+    bool items = false,
+    bool effects = false,
+  }) => _abilitiesOf(player.opponent).any(
+    (entry) => switch (entry.$2) {
+      ForbidEnemyPlays(
+        items: final forbidsItems,
+        effects: final forbidsEffects,
+      ) =>
+        (items && forbidsItems) || (effects && forbidsEffects),
+      _ => false,
+    },
+  );
+
   /// Termina la partida: las Creatures que siguen en la mesa o apartadas
   /// por un Tie vuelven al Discard Stack de su dueño, porque nadie las
-  /// venció (CU-04, flujo 2a).
+  /// venció (CU-04, flujo 2a). Los Effects en juego también van al Discard
+  /// Stack.
   void _finish() {
     for (final area in _areas.values) {
       area.discard(area.removeFromPlay());
       area.discard(area.takeTied());
+      area.discard(area.takeEffectsInPlay());
     }
     _phase = MatchPhase.finished;
   }

@@ -10,6 +10,7 @@ export 'src/entities/clash_duration.dart';
 export 'src/entities/game_card.dart';
 export 'src/entities/rarity.dart';
 export 'src/match/creature_in_play.dart';
+export 'src/match/effect_in_play.dart';
 export 'src/match/game_match.dart';
 export 'src/match/match_card.dart';
 export 'src/match/player.dart';

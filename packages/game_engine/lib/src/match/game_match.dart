@@ -74,6 +74,14 @@ enum InvalidPlayReason {
   /// Una habilidad del rival lo prohíbe, por ejemplo "Your enemy cannot play
   /// Effects".
   forbiddenByEnemy,
+
+  /// El jugador ya usó la habilidad activa de su Initial Effect: solo se
+  /// puede una vez por partida (RF-10).
+  alreadyUsed,
+
+  /// El Initial Effect del jugador no tiene una habilidad activa que pueda
+  /// usar.
+  noActiveAbility,
 }
 
 /// Error que se produce al intentar una jugada no permitida.
@@ -190,6 +198,9 @@ final class GameMatch {
     for (final player in Player.values) player: 0,
   };
 
+  /// Jugadores que ya usaron la habilidad activa de su Initial Effect.
+  final Set<Player> _activeUsed = {};
+
   /// Ganador del último Clash, o `null` si fue Tie o aún no hay ninguno
   /// (Excellence).
   Player? _lastWinner;
@@ -226,6 +237,33 @@ final class GameMatch {
     if (own == kind) return true;
     final rival = area(player.opponent).initialEffect.card.kind;
     return own == InitialEffectKind.empathy && rival == kind;
+  }
+
+  /// Initial Effect cuya habilidad activa puede usar [player], o `null` si
+  /// no tiene ninguna.
+  ///
+  /// Es el suyo si tiene habilidad activa. Con Empathy es el del rival, si
+  /// también la tiene; si ambos tienen Empathy, no copia nada.
+  InitialEffectKind? activeKindOf(Player player) {
+    final own = area(player).initialEffect.card.kind;
+    if (own.active) return own;
+    if (own != InitialEffectKind.empathy) return null;
+    final rival = area(player.opponent).initialEffect.card.kind;
+    return rival.active ? rival : null;
+  }
+
+  /// Indica si [player] ya usó la habilidad activa de su Initial Effect.
+  bool hasUsedActive(Player player) => _activeUsed.contains(player);
+
+  /// Indica por qué [player] no puede usar la habilidad activa de su
+  /// Initial Effect, o `null` si sí puede.
+  ///
+  /// Sirve para que la interfaz desactive el botón.
+  InvalidPlayReason? checkUseInitialEffect(Player player) {
+    if (_phase != MatchPhase.play) return InvalidPlayReason.wrongPhase;
+    if (activeKindOf(player) == null) return InvalidPlayReason.noActiveAbility;
+    if (hasUsedActive(player)) return InvalidPlayReason.alreadyUsed;
+    return null;
   }
 
   /// Indica si hay un Tie sin resolver: el próximo Clash define también

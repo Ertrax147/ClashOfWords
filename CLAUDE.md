@@ -39,6 +39,7 @@ Definidas a partir de las cartas y del manual, porque el SRS no las recoge. Pend
 - La Duration que aparece en un Item es la que otorga a su Creature, no la duración del Item.
 - Items, Effects e Initial Effects pueden cambiar la Rarity o la Duration de una Creature. Se conserva siempre la mayor entre la que tenía y la que recibe: nunca empeoran a la Creature. Los modificadores de un Item valen mientras esté equipado; los de un Effect, mientras dure.
 - Los Items Epic y Legendary no tienen Class y pueden equiparse a cualquier Creature. Un Item con Class solo se equipa a una Creature que comparta al menos una Class con él.
+- Cada Creature tiene una sola Class; los Items pueden tener varias. En un Clash con igual Rarity y la misma Class hay Tie, sin importar el Power (Paso 3 del manual).
 - Si el manual se contradice sobre a dónde van las Creatures tras un Clash, manda el Paso 5: ganadora al Discard Stack de su dueño y perdedora al Trophy Stack del rival.
 
 ## Flujo de Git

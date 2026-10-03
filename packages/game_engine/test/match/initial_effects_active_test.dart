@@ -14,6 +14,10 @@ GameMatch matchWith(InitialEffectKind one, InitialEffectKind two) => matchOf(
   twoEffect: initialEffectOf(two),
 );
 
+/// La carta llamada [name] entre [cards].
+MatchCard cardNamed(List<MatchCard> cards, String name) =>
+    cards.firstWhere((card) => card.card.name == name);
+
 void main() {
   group('active ability of the Initial Effect', () {
     test('is the own one when the card has an active ability', () {
@@ -531,9 +535,6 @@ void main() {
   });
 
   group('Creativity', () {
-    MatchCard cardNamed(List<MatchCard> cards, String name) =>
-        cards.firstWhere((card) => card.card.name == name);
-
     /// Partida en la que Pup (Power 1) está en la mesa con un Flags Jacket
     /// en la Hand, y en el Deck hay otro Item y dos Creatures.
     GameMatch creativityMatch() => matchOf(
@@ -679,6 +680,149 @@ void main() {
 
         expect(match.phase, MatchPhase.finished);
       });
+    });
+  });
+
+  group('Generosity', () {
+    /// Partida en la que el jugador uno tiene Generosity y el jugador dos
+    /// tiene [two] en el Deck, ya en la fase de jugar. Bag, la Creature del
+    /// jugador uno, es Traveler: puede equipar Flags Jacket.
+    GameMatch generosityMatch(List<GameCard> two) => matchOf(
+      [common('Bag', traveler, 1), common('Second', wild, 1)],
+      two,
+      oneEffect: initialEffectOf(InitialEffectKind.generosity),
+      twoEffect: initialEffectOf(InitialEffectKind.diversity),
+    )..revealCreatures();
+
+    final rock = common('Rock', warrior, 1);
+
+    test('offers the items and effects of the rival hand', () {
+      final match = generosityMatch([flagsJacket, uglyTheater, rock]);
+
+      expect(names(match.activeOptions(Player.one)), [
+        'Flags Jacket',
+        'Ugly Theater',
+      ]);
+    });
+
+    test('moves the chosen card to the own hand, still owned by the rival', () {
+      final match = generosityMatch([flagsJacket, uglyTheater, rock]);
+      final jacket = cardNamed(match.activeOptions(Player.one), 'Flags Jacket');
+
+      match.useInitialEffect(Player.one, CardChoice(jacket));
+
+      expect(names(match.area(Player.one).hand), ['Flags Jacket']);
+      expect(names(match.area(Player.two).hand), ['Ugly Theater']);
+      expect(jacket.owner, Player.two);
+      expect(match.hasUsedActive(Player.one), isTrue);
+    });
+
+    test('the stolen item is equipped under the usual rules', () {
+      final match = generosityMatch([flagsJacket, rock]);
+      final jacket = itemInHand(match, Player.two);
+      match.useInitialEffect(Player.one, CardChoice(jacket));
+
+      match.equipItem(Player.one, jacket);
+
+      // Bag pasa a Uncommon con Power 5 y vence a Rock.
+      expect(match.statsOf(Player.one)!.power, 5);
+      expect(match.resolveClash(), isA<ClashWin>());
+    });
+
+    test('a stolen item that wins goes back to the discard of its owner', () {
+      final match = generosityMatch([
+        flagsJacket,
+        rock,
+        common('Next', warrior, 1),
+      ]);
+      final jacket = itemInHand(match, Player.two);
+      match.useInitialEffect(Player.one, CardChoice(jacket));
+      match.equipItem(Player.one, jacket);
+
+      match.resolveClash();
+
+      expect(names(match.area(Player.one).discardStack), ['Bag']);
+      expect(names(match.area(Player.two).discardStack), ['Flags Jacket']);
+      expect(names(match.area(Player.one).trophyStack), ['Rock']);
+    });
+
+    test('a stolen item on a defeated creature is not a trophy', () {
+      // Spear Statue (Uncommon, Power 9) vence a Bag con el Flags Jacket
+      // robado. El Item es del jugador dos, así que no es un trofeo suyo.
+      final match = generosityMatch([flagsJacket, spearStatue, rock]);
+      final jacket = itemInHand(match, Player.two);
+      match.useInitialEffect(Player.one, CardChoice(jacket));
+      match.equipItem(Player.one, jacket);
+
+      match.resolveClash();
+
+      expect(names(match.area(Player.two).trophyStack), ['Bag']);
+      expect(
+        names(match.area(Player.two).discardStack),
+        unorderedEquals(['Spear Statue', 'Flags Jacket']),
+      );
+    });
+
+    test('a stolen effect returns to the discard of its owner when spent', () {
+      final match = generosityMatch([
+        uglyTheater,
+        rock,
+        common('Next', warrior, 1),
+      ]);
+      final theater = match.area(Player.two).hand.single;
+      match.useInitialEffect(Player.one, CardChoice(theater));
+      match.playEffect(Player.one, theater as MatchCard<Effect>);
+
+      match.resolveClash();
+
+      expect(
+        names(match.area(Player.two).discardStack),
+        contains('Ugly Theater'),
+      );
+      expect(
+        names(match.area(Player.one).discardStack),
+        isNot(contains('Ugly Theater')),
+      );
+    });
+
+    test('a stolen effect still in play when the match ends goes back too', () {
+      // Orange Stars dura 4 Clashes, pero el Deck del jugador dos se agota.
+      final match = generosityMatch([orangeStars, rock]);
+      final stars = match.area(Player.two).hand.single;
+      match.useInitialEffect(Player.one, CardChoice(stars));
+      match.playEffect(Player.one, stars as MatchCard<Effect>);
+      match.resolveClash();
+
+      match.revealCreatures();
+
+      expect(match.phase, MatchPhase.finished);
+      expect(
+        names(match.area(Player.two).discardStack),
+        contains('Orange Stars'),
+      );
+      expect(
+        names(match.area(Player.one).discardStack),
+        isNot(contains('Orange Stars')),
+      );
+    });
+
+    test('is not usable if the rival hand is empty', () {
+      final match = generosityMatch([rock]);
+
+      expect(
+        match.checkUseInitialEffect(Player.one),
+        InvalidPlayReason.noValidTarget,
+      );
+    });
+
+    test('rejects a card that is not in the rival hand', () {
+      final match = generosityMatch([flagsJacket, rock]);
+      final bag = match.area(Player.one).creatureInPlay!.creature;
+
+      expect(
+        match.checkUseInitialEffect(Player.one, CardChoice(bag)),
+        InvalidPlayReason.invalidChoice,
+      );
     });
   });
 

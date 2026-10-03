@@ -287,6 +287,7 @@ final class GameMatch {
       InitialEffectKind.creativity => area(
         player,
       ).deck.whereType<MatchCard<Creature>>().toList(),
+      InitialEffectKind.generosity => area(player.opponent).hand,
       _ => const [],
     };
   }
@@ -332,7 +333,8 @@ final class GameMatch {
       case InitialEffectKind.recycle ||
           InitialEffectKind.responsibility ||
           InitialEffectKind.loyalty ||
-          InitialEffectKind.creativity:
+          InitialEffectKind.creativity ||
+          InitialEffectKind.generosity:
         final options = activeOptions(player);
         if (options.isEmpty) return InvalidPlayReason.noValidTarget;
         if (choice != null &&
@@ -384,6 +386,10 @@ final class GameMatch {
   /// - Creativity: [choice] es la Creature de su Deck que juega. Reemplaza a
   ///   la que estaba en la mesa, que va con su Item a su Discard Stack sin
   ///   ser trofeo. Luego baraja el Deck.
+  /// - Generosity: [choice] es un Item o Effect de la Hand del rival, que
+  ///   pasa a la Hand de [player] y se juega con las reglas de siempre. Sigue
+  ///   siendo del rival: al agotarse vuelve a su Discard Stack y nunca cuenta
+  ///   como trofeo.
   ///
   /// Devuelve las cartas que reveló cada jugador por el camino (vacío casi
   /// siempre). Solo Creativity puede revelar: si un Effect del rival saca de
@@ -412,13 +418,11 @@ final class GameMatch {
         area(player).creatureInPlay!.grantDuration(ClashDuration(3));
       case InitialEffectKind.kindness:
         final stolen = area(player.opponent).drawTop()!;
-        area(player).addTrophies([stolen]);
+        _addTrophies(player, [stolen]);
       case InitialEffectKind.loyalty:
         // La validación garantiza que es una Creature del Trophy Stack rival.
         final creature = (choice as CardChoice).card as MatchCard<Creature>;
-        area(
-          player,
-        ).discard(area(player.opponent).takeTrophyCreature(creature));
+        _discard(area(player.opponent).takeTrophyCreature(creature));
       case InitialEffectKind.honesty:
         final order = choice as ReorderChoice;
         area(player).reorderTop(order.own);
@@ -428,11 +432,16 @@ final class GameMatch {
         final creature = (choice as CardChoice).card as MatchCard<Creature>;
         final area = this.area(player);
         area.removeFromDeck(creature);
-        area.discard(area.removeFromPlay());
+        _discard(area.removeFromPlay());
         _enterPlay(player, creature);
         area.shuffleDeck(_random);
         // Un Effect rival puede sacar a la nueva Creature de la mesa.
         if (!_fillCreature(player, revealed[player]!)) _finish();
+      case InitialEffectKind.generosity:
+        // La validación garantiza que es una carta de la Hand rival.
+        final card = (choice as CardChoice).card;
+        area(player.opponent).removeFromHand(card);
+        area(player).addToHand(card);
       case final kind:
         throw UnimplementedError('Active ability of ${kind.name}');
     }
@@ -658,10 +667,10 @@ final class GameMatch {
           ...loserArea.removeFromPlay(),
           ...loserArea.takeTied(),
         ]);
-        winnerArea.discard(winnerArea.takeTied());
+        _discard(winnerArea.takeTied());
         final survivor = winnerArea.creatureInPlay!..spendClash();
         if (survivor.isExhausted) {
-          winnerArea.discard(winnerArea.removeFromPlay());
+          _discard(winnerArea.removeFromPlay());
         }
         _lossesSinceWin[winnerPlayer] = 0;
         _lossesSinceWin[loserPlayer] = _lossesSinceWin[loserPlayer]! + 1;
@@ -675,7 +684,7 @@ final class GameMatch {
         _lastClashWasTie = true;
     }
     for (final area in _areas.values) {
-      area.discard(area.spendEffectsClash());
+      _discard(area.spendEffectsClash());
     }
     _phase = MatchPhase.reveal;
     return result;
@@ -690,7 +699,7 @@ final class GameMatch {
     while (true) {
       if (area.creatureInPlay != null) {
         if (!_isDiscardedByEnemy(player)) return true;
-        area.discard(area.removeFromPlay());
+        _discard(area.removeFromPlay());
         continue;
       }
       final card = area.drawTop();
@@ -739,8 +748,6 @@ final class GameMatch {
   /// Con Tolerance, las primeras 3 Creatures derrotadas del jugador van a
   /// su propio Discard Stack, con sus Items.
   void _sendDefeated(Player loser, List<MatchCard> cards) {
-    final loserArea = area(loser);
-    final winnerArea = area(loser.opponent);
     var saved = false;
     final trophies = <MatchCard>[];
     for (final card in cards) {
@@ -751,13 +758,13 @@ final class GameMatch {
         if (saved) _toleranceUsed[loser] = _toleranceUsed[loser]! + 1;
       }
       if (saved) {
-        loserArea.discard([card]);
+        _discard([card]);
       } else {
         trophies.add(card);
       }
     }
     // En un solo lote, para que cada Item quede registrado con su Creature.
-    winnerArea.addTrophies(trophies);
+    _addTrophies(loser.opponent, trophies);
   }
 
   /// Habilidades en juego de [owner], con el momento en que entraron: las de
@@ -825,11 +832,34 @@ final class GameMatch {
   /// Stack.
   void _finish() {
     for (final area in _areas.values) {
-      area.discard(area.removeFromPlay());
-      area.discard(area.takeTied());
-      area.discard(area.takeEffectsInPlay());
+      _discard(area.removeFromPlay());
+      _discard(area.takeTied());
+      _discard(area.takeEffectsInPlay());
     }
     _phase = MatchPhase.finished;
+  }
+
+  /// Manda [cards] al Discard Stack de su dueño.
+  ///
+  /// El Discard Stack solo guarda cartas propias. Una carta que el jugador
+  /// tenía prestada (Generosity) vuelve al Discard Stack de su dueño
+  /// original, aunque la haya usado el rival.
+  void _discard(Iterable<MatchCard> cards) {
+    for (final card in cards) {
+      area(card.owner).discard([card]);
+    }
+  }
+
+  /// Agrega [cards] al Trophy Stack de [winner].
+  ///
+  /// El Trophy Stack solo guarda cartas del rival. Una carta de [winner]
+  /// que estaba prestada (Generosity) no cuenta como trofeo: vuelve a su
+  /// Discard Stack.
+  void _addTrophies(Player winner, List<MatchCard> cards) {
+    _discard(cards.where((card) => card.owner == winner));
+    area(
+      winner,
+    ).addTrophies(cards.where((card) => card.owner != winner).toList());
   }
 
   void _requirePhase(MatchPhase expected) {

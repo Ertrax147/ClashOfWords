@@ -10,7 +10,7 @@ Creature unicornQueen() => Creature(
   id: 'unicorn-queen',
   name: 'Unicorn Queen',
   rarity: Rarity.legendary,
-  classes: {wild},
+  cardClass: wild,
   power: 8,
   duration: ClashDuration(4),
 );
@@ -19,7 +19,7 @@ Creature lightPhoenix() => Creature(
   id: 'light-phoenix',
   name: 'Light Phoenix',
   rarity: Rarity.legendary,
-  classes: {magical},
+  cardClass: magical,
   power: 7,
   duration: ClashDuration(4),
 );
@@ -87,7 +87,7 @@ void main() {
 
       expect(creature.name, 'Unicorn Queen');
       expect(creature.rarity, Rarity.legendary);
-      expect(creature.classes, {wild});
+      expect(creature.cardClass, wild);
       expect(creature.power, 8);
       expect(creature.duration, ClashDuration(4));
     });
@@ -97,7 +97,7 @@ void main() {
         id: 'meditating-brush',
         name: 'Meditating Brush',
         rarity: Rarity.common,
-        classes: {CardClass('Smart')},
+        cardClass: CardClass('Smart'),
         power: 2,
       );
 
@@ -109,7 +109,7 @@ void main() {
         id: 'elder-angel',
         name: 'Elder Angel',
         rarity: Rarity.legendary,
-        classes: {magical},
+        cardClass: magical,
         power: 0,
         duration: ClashDuration(5),
       );
@@ -122,31 +122,12 @@ void main() {
         id: 'test',
         name: 'Test',
         rarity: Rarity.common,
-        classes: {wild},
+        cardClass: wild,
         power: power,
       );
 
       expect(() => withPower(-1), throwsArgumentError);
       expect(() => withPower(10), throwsArgumentError);
-    });
-
-    test('rejects a creature without classes', () {
-      expect(
-        () => Creature(
-          id: 'test',
-          name: 'Test',
-          rarity: Rarity.common,
-          classes: {},
-          power: 3,
-        ),
-        throwsArgumentError,
-      );
-    });
-
-    test('its classes cannot be modified after creation', () {
-      final creature = unicornQueen();
-
-      expect(() => creature.classes.add(magical), throwsUnsupportedError);
     });
   });
 
@@ -195,10 +176,14 @@ void main() {
       expect(diamondSword().canBeEquippedTo(lightPhoenix()), isTrue);
     });
 
-    test('an item with classes needs a creature that shares one', () {
+    test('an item with classes needs a creature of one of them', () {
       // Invisible Coat es Magical y Secret.
       expect(invisibleCoat().canBeEquippedTo(lightPhoenix()), isTrue);
       expect(invisibleCoat().canBeEquippedTo(unicornQueen()), isFalse);
+    });
+
+    test('its classes cannot be modified after creation', () {
+      expect(() => invisibleCoat().classes.add(wild), throwsUnsupportedError);
     });
   });
 }

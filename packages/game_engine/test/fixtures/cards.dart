@@ -128,3 +128,33 @@ final diamondSword = Item(
   grantedRarity: Rarity.legendary,
   grantedDuration: ClashDuration(2),
 );
+
+final ancientPan = Item(
+  id: 'ancient-pan',
+  name: 'Ancient Pan',
+  rarity: Rarity.epic,
+  powerBonus: 5,
+  grantedDuration: ClashDuration(3),
+);
+
+final flagsJacket = Item(
+  id: 'flags-jacket',
+  name: 'Flags Jacket',
+  rarity: Rarity.uncommon,
+  classes: {CardClass('Traveler'), CardClass('Usual')},
+  powerBonus: 4,
+);
+
+// Effects
+
+final huggingHospital = Effect(
+  id: 'hugging-hospital',
+  name: 'Hugging Hospital',
+  rarity: Rarity.rare,
+  duration: ClashDuration(5),
+);
+
+// Initial Effects
+
+final loyalty = InitialEffect(id: 'loyalty', name: 'Loyalty');
+final respect = InitialEffect(id: 'respect', name: 'Respect');

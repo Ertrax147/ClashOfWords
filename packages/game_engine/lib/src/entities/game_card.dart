@@ -1,6 +1,7 @@
 import 'ability.dart';
 import 'card_class.dart';
 import 'clash_duration.dart';
+import 'initial_effect_kind.dart';
 import 'rarity.dart';
 
 /// Carta del catálogo de Clash of Words.
@@ -10,8 +11,8 @@ import 'rarity.dart';
 /// [GameCard] obliga a contemplar los cuatro tipos.
 ///
 /// Estas clases describen la carta tal como está impresa: sus atributos y
-/// sus habilidades ([Ability]). Las habilidades de los Initial Effects se
-/// agregan en una etapa posterior del motor.
+/// sus habilidades ([Ability]). Los Initial Effects se identifican por su
+/// tipo ([InitialEffectKind]).
 ///
 /// Se llama `GameCard` y no `Card` para no chocar con el widget `Card` de
 /// Flutter en las pantallas que importen ambos.
@@ -192,8 +193,11 @@ final class Effect extends GameCard {
 ///
 /// Su Rarity es siempre *Value* y no tiene Power, porque nunca se enfrenta
 /// en un Clash. Sus habilidades pasivas actúan toda la partida y las activas
-/// se usan una vez por partida.
+/// se usan una vez por partida. Qué hace depende de su [kind].
 final class InitialEffect extends GameCard {
-  /// Crea un Initial Effect.
-  InitialEffect({required super.id, required super.name});
+  /// Crea un Initial Effect del tipo [kind].
+  InitialEffect({required super.id, required super.name, required this.kind});
+
+  /// Cuál de los 16 Initial Effects es.
+  final InitialEffectKind kind;
 }

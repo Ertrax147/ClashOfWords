@@ -249,5 +249,13 @@ final classroomCleaning = Effect(
 
 // Initial Effects
 
-final loyalty = InitialEffect(id: 'loyalty', name: 'Loyalty');
-final respect = InitialEffect(id: 'respect', name: 'Respect');
+/// Crea el Initial Effect real del tipo [kind].
+InitialEffect initialEffectOf(InitialEffectKind kind) {
+  final name = kind.name[0].toUpperCase() + kind.name.substring(1);
+  return InitialEffect(id: kind.name, name: name, kind: kind);
+}
+
+/// Solo tiene habilidad activa, así que no cambia nada en una partida que no
+/// la use. Es el Initial Effect por defecto de las partidas de prueba.
+final loyalty = initialEffectOf(InitialEffectKind.loyalty);
+final respect = initialEffectOf(InitialEffectKind.respect);

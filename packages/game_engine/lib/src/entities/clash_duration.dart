@@ -51,6 +51,16 @@ final class ClashDuration {
   /// la empeora.
   ClashDuration max(ClashDuration other) => isLongerThan(other) ? this : other;
 
+  /// Devuelve lo que queda de esta Duration después de un Clash.
+  ///
+  /// Devuelve `null` si ya no queda ningún Clash. Una Duration infinita
+  /// sigue siendo infinita.
+  ClashDuration? afterClash() {
+    if (isInfinite) return this;
+    final left = clashes! - 1;
+    return left == 0 ? null : ClashDuration._(left);
+  }
+
   @override
   bool operator ==(Object other) =>
       other is ClashDuration && other.clashes == clashes;

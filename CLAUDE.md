@@ -38,10 +38,19 @@ Definidas a partir de las cartas y del manual, porque el SRS no las recoge. Pend
 - Si pierde, va al Trophy Stack del rival aunque le quede Duration. Su Item sigue equipado mientras ella esté en juego y la acompaña a la pila que corresponda.
 - La Duration que aparece en un Item es la que otorga a su Creature, no la duración del Item.
 - Items, Effects e Initial Effects pueden cambiar la Rarity o la Duration de una Creature. Se conserva siempre la mayor entre la que tenía y la que recibe: nunca empeoran a la Creature. Los modificadores de un Item valen mientras esté equipado; los de un Effect, mientras dure.
-- Los Items Epic y Legendary no tienen Class y pueden equiparse a cualquier Creature. Un Item con Class solo se equipa a una Creature que comparta al menos una Class con él.
+- Un Item sin Class puede equiparse a cualquier Creature (en las cartas hay Items Rare, Epic y Legendary sin Class). Un Item con Class solo se equipa a una Creature que comparta al menos una Class con él.
 - Cada Creature tiene una sola Class; los Items pueden tener varias. En un Clash con igual Rarity y la misma Class hay Tie, sin importar el Power (Paso 3 del manual).
 - En un Tie, las dos Creatures se apartan con sus Items aunque les quede Duration, y se revelan Creatures nuevas (CU-04). Al resolverse, las apartadas del ganador van a su Discard Stack y las del perdedor al Trophy Stack del ganador.
 - La ganadora del Clash que resuelve un Tie respeta su propia Duration: si le quedan Clashes, sigue en la mesa. CU-04 dice que las ganadoras van al Discard Stack, pero se escribió antes de definir la Duration.
+
+### Effects y habilidades
+
+- Las habilidades de Creatures, Items y Effects se describen como datos (modificar Power, Rarity o Class; sacar Creatures rivales; prohibir jugadas). Los Initial Effects se programan uno por uno.
+- La regla de "la mayor" solo aplica a lo que se le da a las Creatures propias. Lo que apunta al rival ("Enemy creatures get -3", "Enemy Wild creatures get Common") sí puede bajarle el Power y la Rarity.
+- "Your creatures get <Class>" agrega la Class: la Creature conserva la suya. Con las Class agregadas puede equipar Items de esa Class, y en el Clash hay Tie si las dos Creatures comparten al menos una Class.
+- "Move the enemy <Class> creature to the Discard stack": la Creature rival y su Item van al Discard Stack de su dueño (no son trofeo) y el rival revela otra para el mismo Clash. Mientras dure el Effect, se aplica también a las Creatures que el rival revele.
+- Se pueden jugar varios Effects en un mismo Clash, antes de resolverlo. Su Duration cuenta desde el Clash en que se juegan e incluye los Ties.
+- "Your enemy cannot play Effects/Items" impide jugar cartas nuevas, pero no cancela las que ya están en juego.
 - Si el manual se contradice sobre a dónde van las Creatures tras un Clash, manda el Paso 5: ganadora al Discard Stack de su dueño y perdedora al Trophy Stack del rival.
 
 ## Flujo de Git

@@ -106,6 +106,42 @@ void main() {
     );
   });
 
+  test('with the real catalog, every clash you win gives you trophies, '
+      'unless the opponent has Tolerance', () {
+    for (var seed = 0; seed < 40; seed++) {
+      final container = containerWithSeed(seed);
+      final controller = container.read(matchControllerProvider.notifier)
+        ..startMatch(catalog);
+      GameMatch match() => container.read(matchControllerProvider)!.match;
+
+      while (match().phase != MatchPhase.finished) {
+        if (match().phase == MatchPhase.reveal) {
+          controller.reveal();
+          continue;
+        }
+        for (final card in match().area(humanPlayer).hand) {
+          if (match().phase == MatchPhase.play) controller.playCard(card);
+        }
+        if (match().phase != MatchPhase.play) continue;
+
+        final before = match().area(humanPlayer).trophyStack.length;
+        controller.clash();
+        final result = container.read(matchControllerProvider)!.lastResult;
+        final tolerance = match().hasPassive(
+          systemPlayer,
+          InitialEffectKind.tolerance,
+        );
+        if (result case ClashWin(winner: ClashSide.first) when !tolerance) {
+          expect(
+            match().area(humanPlayer).trophyStack.length,
+            greaterThan(before),
+            reason: 'seed $seed',
+          );
+        }
+      }
+    }
+  });
+
   test('an invalid play explains why in English', () {
     final container = containerWithSeed(1);
     final controller = container.read(matchControllerProvider.notifier)

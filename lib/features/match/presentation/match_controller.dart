@@ -206,6 +206,9 @@ class MatchController extends Notifier<MatchViewState?> {
     };
 
     final result = match.resolveClash();
+    // Todavía no hay pantalla para decidir si se usa Commitment: por ahora
+    // el Clash se aplica tal como se resolvió.
+    if (match.phase == MatchPhase.afterClash) match.declineCommitment();
     final messages = [describe(result)];
     if (result case ClashWin(:final winner)) {
       final loser = winner == ClashSide.first ? Player.two : Player.one;
@@ -288,7 +291,11 @@ String explain(InvalidPlayReason reason) => switch (reason) {
 String describe(ClashResult result) => switch (result) {
   ClashWin(:final winner, :final reason) =>
     '${winner == ClashSide.first ? 'You win' : 'You lose'} the Clash '
-        '${reason == WinReason.rarity ? 'by Rarity' : 'by Power'}.',
+        '${switch (reason) {
+          WinReason.rarity => 'by Rarity',
+          WinReason.power => 'by Power',
+          WinReason.commitment => 'thanks to Commitment',
+        }}.',
   ClashTie(:final reason) =>
     "Tie! ${reason == TieReason.sameClass ? 'Same Class' : 'Same Power'}. "
         'The next Clash decides it.',

@@ -24,6 +24,12 @@ enum MatchPhase {
   /// antes de resolver el Clash ([GameMatch.resolveClash]).
   play,
 
+  /// El Clash tiene ganador, pero el perdedor tiene Commitment sin usar y
+  /// debe decidir si lo usa ([GameMatch.useInitialEffect]) o no
+  /// ([GameMatch.declineCommitment]). Hasta entonces el Clash no se aplicó:
+  /// las Creatures siguen en la mesa y ninguna carta cambió de pila.
+  afterClash,
+
   /// La partida terminó y tiene resultado ([GameMatch.result]).
   finished,
 }
@@ -214,6 +220,12 @@ final class GameMatch {
   /// Jugadores que ya usaron la habilidad activa de su Initial Effect.
   final Set<Player> _activeUsed = {};
 
+  /// Clash con ganador que espera la decisión de Commitment del perdedor.
+  ClashWin? _pendingClash;
+
+  /// Resultado del último Clash aplicado, con Commitment incluido.
+  ClashResult? _lastClashResult;
+
   /// Ganador del último Clash, o `null` si fue Tie o aún no hay ninguno
   /// (Excellence).
   Player? _lastWinner;
@@ -268,6 +280,21 @@ final class GameMatch {
   /// Indica si [player] ya usó la habilidad activa de su Initial Effect.
   bool hasUsedActive(Player player) => _activeUsed.contains(player);
 
+  /// Jugador que debe decidir si usa Commitment, o `null` si la partida no
+  /// está en la fase [MatchPhase.afterClash].
+  Player? get awaitingCommitment {
+    final pending = _pendingClash;
+    return pending == null ? null : _playerOf(pending.loser);
+  }
+
+  /// Resultado del último Clash ya aplicado, o `null` si aún no hay
+  /// ninguno.
+  ///
+  /// A diferencia de lo que devuelve [resolveClash], incluye el cambio que
+  /// haya hecho Commitment: ahí el ganador es el que perdió, con el motivo
+  /// [WinReason.commitment].
+  ClashResult? get lastClashResult => _lastClashResult;
+
   /// Cartas entre las que [player] puede elegir al usar su habilidad
   /// activa, para las habilidades que piden elegir una carta.
   ///
@@ -288,6 +315,7 @@ final class GameMatch {
         player,
       ).deck.whereType<MatchCard<Creature>>().toList(),
       InitialEffectKind.generosity => area(player.opponent).hand,
+      InitialEffectKind.commitment => area(player).trophyCreatures,
       _ => const [],
     };
   }
@@ -325,8 +353,12 @@ final class GameMatch {
     Player player, [
     InitialEffectChoice? choice,
   ]) {
-    if (_phase != MatchPhase.play) return InvalidPlayReason.wrongPhase;
     final kind = activeKindOf(player);
+    // Commitment actúa sobre un Clash ya perdido; las demás, durante él.
+    final phase = kind == InitialEffectKind.commitment
+        ? MatchPhase.afterClash
+        : MatchPhase.play;
+    if (_phase != phase) return InvalidPlayReason.wrongPhase;
     if (kind == null) return InvalidPlayReason.noActiveAbility;
     if (hasUsedActive(player)) return InvalidPlayReason.alreadyUsed;
     switch (kind) {
@@ -348,6 +380,17 @@ final class GameMatch {
       case InitialEffectKind.kindness:
         if (area(player.opponent).deck.isEmpty) {
           return InvalidPlayReason.noValidTarget;
+        }
+      case InitialEffectKind.commitment:
+        // Solo el que perdió el Clash puede usarlo.
+        if (awaitingCommitment != player) return InvalidPlayReason.wrongPhase;
+        final options = activeOptions(player);
+        // Si no hay Creatures que mover, solo se gana el Clash.
+        if (choice != null &&
+            !(options.isEmpty
+                ? choice is NoChoice
+                : choice is CardChoice && options.contains(choice.card))) {
+          return InvalidPlayReason.invalidChoice;
         }
       case InitialEffectKind.honesty:
         final cards = honestyCards(player);
@@ -390,6 +433,10 @@ final class GameMatch {
   ///   pasa a la Hand de [player] y se juega con las reglas de siempre. Sigue
   ///   siendo del rival: al agotarse vuelve a su Discard Stack y nunca cuenta
   ///   como trofeo.
+  /// - Commitment: solo en la fase [MatchPhase.afterClash], el perdedor
+  ///   gana el Clash. [choice] es la Creature de su Trophy Stack, con sus
+  ///   Items, que va al Discard Stack del rival; es un [NoChoice] si no tiene
+  ///   ninguna. Ningún Effect del rival puede impedirlo.
   ///
   /// Devuelve las cartas que reveló cada jugador por el camino (vacío casi
   /// siempre). Solo Creativity puede revelar: si un Effect del rival saca de
@@ -437,6 +484,16 @@ final class GameMatch {
         area.shuffleDeck(_random);
         // Un Effect rival puede sacar a la nueva Creature de la mesa.
         if (!_fillCreature(player, revealed[player]!)) _finish();
+      case InitialEffectKind.commitment:
+        final pending = _pendingClash!;
+        // La validación garantiza que, si hay Creatures que mover, eligió una.
+        if (choice case CardChoice(:final card)) {
+          _discard(
+            area(player).takeTrophyCreature(card as MatchCard<Creature>),
+          );
+        }
+        _pendingClash = null;
+        _applyClash(ClashWin(pending.loser, WinReason.commitment));
       case InitialEffectKind.generosity:
         // La validación garantiza que es una carta de la Hand rival.
         final card = (choice as CardChoice).card;
@@ -642,6 +699,13 @@ final class GameMatch {
   /// primeras 3 Creatures derrotadas van al Discard Stack de su dueño en vez
   /// de ser trofeos.
   ///
+  /// Si el perdedor tiene Commitment sin usar, el Clash no se aplica todavía:
+  /// la partida pasa a [MatchPhase.afterClash] y el perdedor decide si lo
+  /// usa ([useInitialEffect]) o no ([declineCommitment]). Un Tie nunca abre
+  /// esa decisión. Lo que devuelve este método es el resultado que
+  /// corresponde antes de esa decisión; el definitivo está en
+  /// [lastClashResult].
+  ///
   /// Lanza un [StateError] si la partida no está en la fase
   /// [MatchPhase.play].
   ClashResult resolveClash() {
@@ -654,6 +718,39 @@ final class GameMatch {
       second,
     );
 
+    if (result case ClashWin(:final loser)) {
+      final loserPlayer = _playerOf(loser);
+      if (activeKindOf(loserPlayer) == InitialEffectKind.commitment &&
+          !hasUsedActive(loserPlayer)) {
+        _pendingClash = result;
+        _phase = MatchPhase.afterClash;
+        return result;
+      }
+    }
+    _applyClash(result);
+    return result;
+  }
+
+  /// El perdedor del Clash pendiente decide no usar Commitment: el Clash se
+  /// aplica como se resolvió.
+  ///
+  /// Lanza un [StateError] si la partida no está en la fase
+  /// [MatchPhase.afterClash].
+  void declineCommitment() {
+    _requirePhase(MatchPhase.afterClash);
+    final pending = _pendingClash!;
+    _pendingClash = null;
+    _applyClash(pending);
+  }
+
+  /// Jugador que controla el lado [side] del Clash.
+  Player _playerOf(ClashSide side) =>
+      side == ClashSide.first ? Player.one : Player.two;
+
+  /// Aplica el [result] de un Clash: mueve las cartas a sus pilas y
+  /// descuenta Duration a Creatures y Effects. Luego la partida vuelve a la
+  /// fase de revelar.
+  void _applyClash(ClashResult result) {
     switch (result) {
       case ClashWin(:final winner):
         final winnerPlayer = winner == ClashSide.first
@@ -686,8 +783,8 @@ final class GameMatch {
     for (final area in _areas.values) {
       _discard(area.spendEffectsClash());
     }
+    _lastClashResult = result;
     _phase = MatchPhase.reveal;
-    return result;
   }
 
   /// Revela cartas de [player] hasta que tenga una Creature en la mesa que

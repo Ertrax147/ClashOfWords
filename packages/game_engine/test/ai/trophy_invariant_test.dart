@@ -29,6 +29,8 @@ void main() {
             player: match.area(player).trophyStack.length,
         };
         final result = match.resolveClash();
+        // Estas partidas no usan habilidades activas.
+        if (match.phase == MatchPhase.afterClash) match.declineCommitment();
         if (result case ClashWin(:final winner)) {
           final winnerPlayer = winner == ClashSide.first
               ? Player.one

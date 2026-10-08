@@ -826,6 +826,195 @@ void main() {
     });
   });
 
+  group('Commitment', () {
+    /// Partida en la que el jugador uno tiene [kind] y su Creature más débil
+    /// pierde el primer Clash: Pup (Power 1) contra Big (Power 5). Queda en
+    /// la fase posterior al Clash.
+    GameMatch lostClash({
+      InitialEffectKind kind = InitialEffectKind.commitment,
+      InitialEffectKind? rival,
+    }) {
+      final match = matchOf(
+        [common('Pup', wild, 1), common('Pup 2', wild, 1)],
+        [common('Big', warrior, 5), common('Big 2', warrior, 5)],
+        oneEffect: initialEffectOf(kind),
+        twoEffect: rival == null ? null : initialEffectOf(rival),
+      )..revealCreatures();
+      match.resolveClash();
+      return match;
+    }
+
+    test('opens a decision for the loser without applying the clash', () {
+      final match = lostClash();
+
+      expect(match.phase, MatchPhase.afterClash);
+      expect(match.awaitingCommitment, Player.one);
+      expect(match.area(Player.one).creatureInPlay, isNotNull);
+      expect(match.area(Player.two).creatureInPlay, isNotNull);
+      expect(match.area(Player.two).trophyStack, isEmpty);
+    });
+
+    test('declining it applies the clash as it was resolved', () {
+      final match = lostClash()..declineCommitment();
+
+      expect(match.phase, MatchPhase.reveal);
+      expect(names(match.area(Player.two).trophyStack), ['Pup']);
+      expect(
+        match.lastClashResult,
+        const ClashWin(ClashSide.second, WinReason.power),
+      );
+      expect(match.hasUsedActive(Player.one), isFalse);
+    });
+
+    test('wins the lost clash, even with nothing to move', () {
+      final match = lostClash();
+
+      match.useInitialEffect(Player.one);
+
+      expect(match.phase, MatchPhase.reveal);
+      expect(names(match.area(Player.one).trophyStack), ['Big']);
+      expect(match.area(Player.two).trophyStack, isEmpty);
+      expect(names(match.area(Player.one).discardStack), ['Pup']);
+      expect(
+        match.lastClashResult,
+        const ClashWin(ClashSide.first, WinReason.commitment),
+      );
+      expect(match.hasUsedActive(Player.one), isTrue);
+    });
+
+    test('moves a creature of the own trophy stack to the rival discard', () {
+      // Wolf vence a Rock en el primer Clash; en el segundo, Pup pierde
+      // contra Big y Commitment manda a Rock de vuelta al rival.
+      final match = matchOf(
+        [
+          common('Wolf', wild, 5),
+          common('Pup', wild, 1),
+          common('Pup 2', wild, 1),
+        ],
+        [
+          common('Rock', warrior, 1),
+          common('Big', warrior, 5),
+          common('Big 2', warrior, 1),
+        ],
+        oneEffect: initialEffectOf(InitialEffectKind.commitment),
+      );
+      playClash(match);
+      match.revealCreatures();
+      match.resolveClash();
+      expect(names(match.activeOptions(Player.one)), ['Rock']);
+      final rock = match.activeOptions(Player.one).single;
+
+      match.useInitialEffect(Player.one, CardChoice(rock));
+
+      expect(names(match.area(Player.one).trophyStack), ['Big']);
+      expect(names(match.area(Player.two).discardStack), contains('Rock'));
+    });
+
+    test('requires choosing a creature when there are any to move', () {
+      final match = matchOf(
+        [
+          common('Wolf', wild, 5),
+          common('Pup', wild, 1),
+          common('Pup 2', wild, 1),
+        ],
+        [
+          common('Rock', warrior, 1),
+          common('Big', warrior, 5),
+          common('Big 2', warrior, 1),
+        ],
+        oneEffect: initialEffectOf(InitialEffectKind.commitment),
+      );
+      playClash(match);
+      match.revealCreatures();
+      match.resolveClash();
+      final big = match.area(Player.two).creatureInPlay!.creature;
+
+      expect(
+        match.checkUseInitialEffect(Player.one, const NoChoice()),
+        InvalidPlayReason.invalidChoice,
+      );
+      expect(
+        match.checkUseInitialEffect(Player.one, CardChoice(big)),
+        InvalidPlayReason.invalidChoice,
+      );
+      expect(match.checkUseInitialEffect(Player.one), isNull);
+    });
+
+    test('rejects a choice when there is nothing to move', () {
+      final match = lostClash();
+      final big = match.area(Player.two).creatureInPlay!.creature;
+
+      expect(
+        match.checkUseInitialEffect(Player.one, CardChoice(big)),
+        InvalidPlayReason.invalidChoice,
+      );
+    });
+
+    test('a tie does not open a decision', () {
+      final match = matchOf(
+        [common('Pup', wild, 3)],
+        [common('Cub', wild, 3)],
+        oneEffect: initialEffectOf(InitialEffectKind.commitment),
+      );
+
+      match.revealCreatures();
+
+      expect(match.resolveClash(), isA<ClashTie>());
+      expect(match.phase, MatchPhase.reveal);
+    });
+
+    test('the winner with Commitment does not get a decision', () {
+      final match = matchOf(
+        [common('Wolf', wild, 5), common('Pup', wild, 1)],
+        [common('Rock', warrior, 1), common('Stone', warrior, 1)],
+        oneEffect: initialEffectOf(InitialEffectKind.commitment),
+      );
+
+      playClash(match);
+
+      expect(match.phase, MatchPhase.reveal);
+      expect(match.awaitingCommitment, isNull);
+    });
+
+    test('it opens a decision only until it has been used', () {
+      final match = lostClash()..useInitialEffect(Player.one);
+
+      match.revealCreatures();
+      match.resolveClash();
+
+      expect(match.phase, MatchPhase.reveal);
+    });
+
+    test('is only usable after losing, and nothing else in the meantime', () {
+      final inPlay = matchOf(
+        [common('Pup', wild, 1)],
+        [common('Big', warrior, 5)],
+        oneEffect: initialEffectOf(InitialEffectKind.commitment),
+      )..revealCreatures();
+      expect(
+        inPlay.checkUseInitialEffect(Player.one),
+        InvalidPlayReason.wrongPhase,
+      );
+
+      final match = lostClash();
+      // El ganador no decide nada, y el Clash no se puede resolver de nuevo.
+      expect(match.checkUseInitialEffect(Player.two), isNotNull);
+      expect(match.resolveClash, throwsStateError);
+      expect(match.revealCreatures, throwsStateError);
+    });
+
+    test('works for a loser with Empathy facing Commitment', () {
+      final match = lostClash(
+        kind: InitialEffectKind.empathy,
+        rival: InitialEffectKind.commitment,
+      );
+
+      expect(match.phase, MatchPhase.afterClash);
+      expect(match.awaitingCommitment, Player.one);
+      expect(match.checkUseInitialEffect(Player.one), isNull);
+    });
+  });
+
   group('Responsibility active ability', () {
     /// Partida en la que Bag, con Flags Jacket, venció a Rock y ambas
     /// cartas están en el Discard Stack del jugador uno. Queda en la fase de

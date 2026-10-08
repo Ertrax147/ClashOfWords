@@ -277,6 +277,11 @@ String explain(InvalidPlayReason reason) => switch (reason) {
     "Your Creature's Rarity cannot use this Item.",
   InvalidPlayReason.forbiddenByEnemy =>
     'Your opponent does not allow you to play this now.',
+  InvalidPlayReason.alreadyUsed => 'You already used your Initial Effect.',
+  InvalidPlayReason.noActiveAbility =>
+    'Your Initial Effect has no ability to activate.',
+  InvalidPlayReason.noValidTarget => 'There is nothing to use it on.',
+  InvalidPlayReason.invalidChoice => 'That is not a valid choice.',
 };
 
 /// Describe en inglés el resultado de un Clash, visto por el estudiante.

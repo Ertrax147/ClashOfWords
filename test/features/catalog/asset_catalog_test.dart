@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:clash_of_words/features/catalog/data/asset_catalog_repository.dart';
@@ -14,11 +15,24 @@ void main() {
     catalog = await AssetCatalogRepository().loadCatalog();
   });
 
-  test('the bundled catalog loads every card', () {
-    expect(catalog.entries, hasLength(78));
-    expect(catalog.cardsOf<Creature>(), hasLength(30));
-    expect(catalog.cardsOf<Item>(), hasLength(12));
-    expect(catalog.cardsOf<Effect>(), hasLength(20));
+  test('the bundled catalog loads every card of cards.json', () {
+    final cards =
+        (jsonDecode(File('assets/catalog/cards.json').readAsStringSync())
+                as Map<String, dynamic>)['cards']
+            as List;
+    int countOf(String type) =>
+        cards.where((card) => card['type'] == type).length;
+
+    expect(catalog.entries, hasLength(cards.length));
+    expect(catalog.cardsOf<Creature>(), hasLength(countOf('creature')));
+    expect(catalog.cardsOf<Item>(), hasLength(countOf('item')));
+    expect(catalog.cardsOf<Effect>(), hasLength(countOf('effect')));
+  });
+
+  test('no two cards share an id', () {
+    final ids = [for (final entry in catalog.entries) entry.card.id];
+
+    expect(ids.toSet(), hasLength(ids.length));
   });
 
   test('it has the 16 initial effects, one of each kind', () {

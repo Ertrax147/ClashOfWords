@@ -2,12 +2,14 @@ import 'dart:math';
 
 import '../entities/ability.dart';
 import '../entities/card_class.dart';
+import '../entities/clash_duration.dart';
 import '../entities/game_card.dart';
 import '../entities/initial_effect_kind.dart';
 import '../rules/clash_resolver.dart';
 import '../rules/clash_resolver.dart' as rules show resolveClash;
 import '../rules/clash_stats.dart';
 import 'effect_in_play.dart';
+import 'initial_effect_choice.dart';
 import 'match_card.dart';
 import 'player.dart';
 import 'player_area.dart';
@@ -21,6 +23,12 @@ enum MatchPhase {
   /// Ambas Creatures están en la mesa. Los jugadores pueden jugar cartas
   /// antes de resolver el Clash ([GameMatch.resolveClash]).
   play,
+
+  /// El Clash tiene ganador, pero el perdedor tiene Commitment sin usar y
+  /// debe decidir si lo usa ([GameMatch.useInitialEffect]) o no
+  /// ([GameMatch.declineCommitment]). Hasta entonces el Clash no se aplicó:
+  /// las Creatures siguen en la mesa y ninguna carta cambió de pila.
+  afterClash,
 
   /// La partida terminó y tiene resultado ([GameMatch.result]).
   finished,
@@ -74,6 +82,22 @@ enum InvalidPlayReason {
   /// Una habilidad del rival lo prohíbe, por ejemplo "Your enemy cannot play
   /// Effects".
   forbiddenByEnemy,
+
+  /// El jugador ya usó la habilidad activa de su Initial Effect: solo se
+  /// puede una vez por partida (RF-10).
+  alreadyUsed,
+
+  /// El Initial Effect del jugador no tiene una habilidad activa que pueda
+  /// usar.
+  noActiveAbility,
+
+  /// La habilidad activa no tiene sobre qué actuar, por ejemplo Recycle sin
+  /// Creatures en el Discard Stack.
+  noValidTarget,
+
+  /// La elección del jugador no corresponde a la habilidad, o no está entre
+  /// las opciones ([GameMatch.activeOptions]).
+  invalidChoice,
 }
 
 /// Error que se produce al intentar una jugada no permitida.
@@ -158,12 +182,15 @@ final class GameMatch {
     return GameMatch._({
       Player.one: areaFor(Player.one, playerOne),
       Player.two: areaFor(Player.two, playerTwo),
-    });
+    }, random ?? Random());
   }
 
-  GameMatch._(this._areas);
+  GameMatch._(this._areas, this._random);
 
   final Map<Player, PlayerArea> _areas;
+
+  /// Azar con que se barajan los Decks cuando una habilidad lo pide.
+  final Random _random;
   MatchPhase _phase = MatchPhase.reveal;
 
   /// Contador que marca el orden en que entran en juego Creatures y
@@ -189,6 +216,15 @@ final class GameMatch {
   final Map<Player, int> _lossesSinceWin = {
     for (final player in Player.values) player: 0,
   };
+
+  /// Jugadores que ya usaron la habilidad activa de su Initial Effect.
+  final Set<Player> _activeUsed = {};
+
+  /// Clash con ganador que espera la decisión de Commitment del perdedor.
+  ClashWin? _pendingClash;
+
+  /// Resultado del último Clash aplicado, con Commitment incluido.
+  ClashResult? _lastClashResult;
 
   /// Ganador del último Clash, o `null` si fue Tie o aún no hay ninguno
   /// (Excellence).
@@ -226,6 +262,248 @@ final class GameMatch {
     if (own == kind) return true;
     final rival = area(player.opponent).initialEffect.card.kind;
     return own == InitialEffectKind.empathy && rival == kind;
+  }
+
+  /// Initial Effect cuya habilidad activa puede usar [player], o `null` si
+  /// no tiene ninguna.
+  ///
+  /// Es el suyo si tiene habilidad activa. Con Empathy es el del rival, si
+  /// también la tiene; si ambos tienen Empathy, no copia nada.
+  InitialEffectKind? activeKindOf(Player player) {
+    final own = area(player).initialEffect.card.kind;
+    if (own.active) return own;
+    if (own != InitialEffectKind.empathy) return null;
+    final rival = area(player.opponent).initialEffect.card.kind;
+    return rival.active ? rival : null;
+  }
+
+  /// Indica si [player] ya usó la habilidad activa de su Initial Effect.
+  bool hasUsedActive(Player player) => _activeUsed.contains(player);
+
+  /// Jugador que debe decidir si usa Commitment, o `null` si la partida no
+  /// está en la fase [MatchPhase.afterClash].
+  Player? get awaitingCommitment {
+    final pending = _pendingClash;
+    return pending == null ? null : _playerOf(pending.loser);
+  }
+
+  /// Resultado del último Clash ya aplicado, o `null` si aún no hay
+  /// ninguno.
+  ///
+  /// A diferencia de lo que devuelve [resolveClash], incluye el cambio que
+  /// haya hecho Commitment: ahí el ganador es el que perdió, con el motivo
+  /// [WinReason.commitment].
+  ClashResult? get lastClashResult => _lastClashResult;
+
+  /// Cartas entre las que [player] puede elegir al usar su habilidad
+  /// activa, para las habilidades que piden elegir una carta.
+  ///
+  /// - Recycle: las Creatures de su Discard Stack.
+  /// - Responsibility: los Items de su Discard Stack.
+  ///
+  /// Está vacía si la habilidad no pide elegir una carta o no hay opciones.
+  /// La interfaz la usa para armar el selector.
+  List<MatchCard> activeOptions(Player player) {
+    final discard = area(player).discardStack;
+    return switch (activeKindOf(player)) {
+      InitialEffectKind.recycle =>
+        discard.whereType<MatchCard<Creature>>().toList(),
+      InitialEffectKind.responsibility =>
+        discard.whereType<MatchCard<Item>>().toList(),
+      InitialEffectKind.loyalty => area(player.opponent).trophyCreatures,
+      InitialEffectKind.creativity => area(
+        player,
+      ).deck.whereType<MatchCard<Creature>>().toList(),
+      InitialEffectKind.generosity => area(player.opponent).hand,
+      InitialEffectKind.commitment => area(player).trophyCreatures,
+      _ => const [],
+    };
+  }
+
+  /// Cartas que [player] descubre con Honesty: las [honestyCount] superiores
+  /// de su Deck y del Deck del rival, en su orden actual.
+  ///
+  /// Están vacías si [player] no puede usar Honesty. La interfaz las usa
+  /// para mostrarlas y dejar que el jugador las reordene.
+  ({List<MatchCard> own, List<MatchCard> enemy}) honestyCards(Player player) {
+    if (activeKindOf(player) != InitialEffectKind.honesty) {
+      return (own: const [], enemy: const []);
+    }
+    List<MatchCard> top(Player owner) =>
+        area(owner).deck.take(honestyCount).toList();
+    return (own: top(player), enemy: top(player.opponent));
+  }
+
+  /// Cantidad de cartas superiores que Honesty descubre de cada Deck.
+  static const honestyCount = 3;
+
+  /// Indica si [order] es una reordenación de las cartas [top].
+  static bool _isReordering(List<MatchCard> order, List<MatchCard> top) =>
+      order.length == top.length &&
+      order.toSet().length == order.length &&
+      order.every(top.contains);
+
+  /// Indica por qué [player] no puede usar la habilidad activa de su
+  /// Initial Effect, o `null` si sí puede.
+  ///
+  /// Sin [choice] solo comprueba que pueda usarla ahora; sirve para que la
+  /// interfaz desactive el botón. Con [choice] comprueba además que la
+  /// elección sea válida.
+  InvalidPlayReason? checkUseInitialEffect(
+    Player player, [
+    InitialEffectChoice? choice,
+  ]) {
+    final kind = activeKindOf(player);
+    // Commitment actúa sobre un Clash ya perdido; las demás, durante él.
+    final phase = kind == InitialEffectKind.commitment
+        ? MatchPhase.afterClash
+        : MatchPhase.play;
+    if (_phase != phase) return InvalidPlayReason.wrongPhase;
+    if (kind == null) return InvalidPlayReason.noActiveAbility;
+    if (hasUsedActive(player)) return InvalidPlayReason.alreadyUsed;
+    switch (kind) {
+      case InitialEffectKind.recycle ||
+          InitialEffectKind.responsibility ||
+          InitialEffectKind.loyalty ||
+          InitialEffectKind.creativity ||
+          InitialEffectKind.generosity:
+        final options = activeOptions(player);
+        if (options.isEmpty) return InvalidPlayReason.noValidTarget;
+        if (choice != null &&
+            !(choice is CardChoice && options.contains(choice.card))) {
+          return InvalidPlayReason.invalidChoice;
+        }
+      case InitialEffectKind.leadership:
+        if (area(player).creatureInPlay == null) {
+          return InvalidPlayReason.noValidTarget;
+        }
+      case InitialEffectKind.kindness:
+        if (area(player.opponent).deck.isEmpty) {
+          return InvalidPlayReason.noValidTarget;
+        }
+      case InitialEffectKind.commitment:
+        // Solo el que perdió el Clash puede usarlo.
+        if (awaitingCommitment != player) return InvalidPlayReason.wrongPhase;
+        final options = activeOptions(player);
+        // Si no hay Creatures que mover, solo se gana el Clash.
+        if (choice != null &&
+            !(options.isEmpty
+                ? choice is NoChoice
+                : choice is CardChoice && options.contains(choice.card))) {
+          return InvalidPlayReason.invalidChoice;
+        }
+      case InitialEffectKind.honesty:
+        final cards = honestyCards(player);
+        if (cards.own.isEmpty && cards.enemy.isEmpty) {
+          return InvalidPlayReason.noValidTarget;
+        }
+        if (choice != null &&
+            !(choice is ReorderChoice &&
+                _isReordering(choice.own, cards.own) &&
+                _isReordering(choice.enemy, cards.enemy))) {
+          return InvalidPlayReason.invalidChoice;
+        }
+      default:
+        break;
+    }
+    return null;
+  }
+
+  /// [player] usa la habilidad activa de su Initial Effect (RF-10, CU-09).
+  ///
+  /// Solo se puede una vez por partida, durante la fase de jugar.
+  /// - Recycle: [choice] es la Creature de su Discard Stack que vuelve al
+  ///   Deck.
+  /// - Responsibility: [choice] es el Item de su Discard Stack que vuelve al
+  ///   Deck.
+  /// - Leadership: su Creature en la mesa queda con Duration de 3 Clashes,
+  ///   contando el actual. Conserva la mayor si ya tenía más.
+  /// - Kindness: la carta superior del Deck rival va directo a su Trophy
+  ///   Stack. Si era la última, el rival no podrá revelar y la partida
+  ///   terminará en el próximo Clash.
+  /// - Loyalty: [choice] es la Creature de su propio equipo que está en el
+  ///   Trophy Stack del rival (ver [activeOptions]). Vuelve a su Discard
+  ///   Stack junto con sus Items, y el rival pierde esos trofeos.
+  /// - Honesty: [choice] es un [ReorderChoice] con el nuevo orden de las
+  ///   [honestyCount] cartas superiores de cada Deck (ver [honestyCards]).
+  /// - Creativity: [choice] es la Creature de su Deck que juega. Reemplaza a
+  ///   la que estaba en la mesa, que va con su Item a su Discard Stack sin
+  ///   ser trofeo. Luego baraja el Deck.
+  /// - Generosity: [choice] es un Item o Effect de la Hand del rival, que
+  ///   pasa a la Hand de [player] y se juega con las reglas de siempre. Sigue
+  ///   siendo del rival: al agotarse vuelve a su Discard Stack y nunca cuenta
+  ///   como trofeo.
+  /// - Commitment: solo en la fase [MatchPhase.afterClash], el perdedor
+  ///   gana el Clash. [choice] es la Creature de su Trophy Stack, con sus
+  ///   Items, que va al Discard Stack del rival; es un [NoChoice] si no tiene
+  ///   ninguna. Ningún Effect del rival puede impedirlo.
+  ///
+  /// Devuelve las cartas que reveló cada jugador por el camino (vacío casi
+  /// siempre). Solo Creativity puede revelar: si un Effect del rival saca de
+  /// la mesa a la Creature jugada, se revela otra, y si el Deck se agota la
+  /// partida termina.
+  ///
+  /// Lanza un [InvalidPlayException] si la jugada no está permitida (ver
+  /// [checkUseInitialEffect]).
+  Map<Player, List<MatchCard>> useInitialEffect(
+    Player player, [
+    InitialEffectChoice choice = const NoChoice(),
+  ]) {
+    final reason = checkUseInitialEffect(player, choice);
+    if (reason != null) throw InvalidPlayException(reason);
+    final revealed = {
+      for (final player in Player.values) player: <MatchCard>[],
+    };
+    switch (activeKindOf(player)!) {
+      case InitialEffectKind.recycle || InitialEffectKind.responsibility:
+        // La validación garantiza que es una CardChoice del Discard Stack.
+        final card = (choice as CardChoice).card;
+        final area = this.area(player);
+        area.removeFromDiscard(card);
+        area.shuffleIntoDeck(card, _random);
+      case InitialEffectKind.leadership:
+        area(player).creatureInPlay!.grantDuration(ClashDuration(3));
+      case InitialEffectKind.kindness:
+        final stolen = area(player.opponent).drawTop()!;
+        _addTrophies(player, [stolen]);
+      case InitialEffectKind.loyalty:
+        // La validación garantiza que es una Creature del Trophy Stack rival.
+        final creature = (choice as CardChoice).card as MatchCard<Creature>;
+        _discard(area(player.opponent).takeTrophyCreature(creature));
+      case InitialEffectKind.honesty:
+        final order = choice as ReorderChoice;
+        area(player).reorderTop(order.own);
+        area(player.opponent).reorderTop(order.enemy);
+      case InitialEffectKind.creativity:
+        // La validación garantiza que es una Creature del Deck.
+        final creature = (choice as CardChoice).card as MatchCard<Creature>;
+        final area = this.area(player);
+        area.removeFromDeck(creature);
+        _discard(area.removeFromPlay());
+        _enterPlay(player, creature);
+        area.shuffleDeck(_random);
+        // Un Effect rival puede sacar a la nueva Creature de la mesa.
+        if (!_fillCreature(player, revealed[player]!)) _finish();
+      case InitialEffectKind.commitment:
+        final pending = _pendingClash!;
+        // La validación garantiza que, si hay Creatures que mover, eligió una.
+        if (choice case CardChoice(:final card)) {
+          _discard(
+            area(player).takeTrophyCreature(card as MatchCard<Creature>),
+          );
+        }
+        _pendingClash = null;
+        _applyClash(ClashWin(pending.loser, WinReason.commitment));
+      case InitialEffectKind.generosity:
+        // La validación garantiza que es una carta de la Hand rival.
+        final card = (choice as CardChoice).card;
+        area(player.opponent).removeFromHand(card);
+        area(player).addToHand(card);
+      case final kind:
+        throw UnimplementedError('Active ability of ${kind.name}');
+    }
+    _activeUsed.add(player);
+    return revealed;
   }
 
   /// Indica si hay un Tie sin resolver: el próximo Clash define también
@@ -421,6 +699,13 @@ final class GameMatch {
   /// primeras 3 Creatures derrotadas van al Discard Stack de su dueño en vez
   /// de ser trofeos.
   ///
+  /// Si el perdedor tiene Commitment sin usar, el Clash no se aplica todavía:
+  /// la partida pasa a [MatchPhase.afterClash] y el perdedor decide si lo
+  /// usa ([useInitialEffect]) o no ([declineCommitment]). Un Tie nunca abre
+  /// esa decisión. Lo que devuelve este método es el resultado que
+  /// corresponde antes de esa decisión; el definitivo está en
+  /// [lastClashResult].
+  ///
   /// Lanza un [StateError] si la partida no está en la fase
   /// [MatchPhase.play].
   ClashResult resolveClash() {
@@ -433,6 +718,39 @@ final class GameMatch {
       second,
     );
 
+    if (result case ClashWin(:final loser)) {
+      final loserPlayer = _playerOf(loser);
+      if (activeKindOf(loserPlayer) == InitialEffectKind.commitment &&
+          !hasUsedActive(loserPlayer)) {
+        _pendingClash = result;
+        _phase = MatchPhase.afterClash;
+        return result;
+      }
+    }
+    _applyClash(result);
+    return result;
+  }
+
+  /// El perdedor del Clash pendiente decide no usar Commitment: el Clash se
+  /// aplica como se resolvió.
+  ///
+  /// Lanza un [StateError] si la partida no está en la fase
+  /// [MatchPhase.afterClash].
+  void declineCommitment() {
+    _requirePhase(MatchPhase.afterClash);
+    final pending = _pendingClash!;
+    _pendingClash = null;
+    _applyClash(pending);
+  }
+
+  /// Jugador que controla el lado [side] del Clash.
+  Player _playerOf(ClashSide side) =>
+      side == ClashSide.first ? Player.one : Player.two;
+
+  /// Aplica el [result] de un Clash: mueve las cartas a sus pilas y
+  /// descuenta Duration a Creatures y Effects. Luego la partida vuelve a la
+  /// fase de revelar.
+  void _applyClash(ClashResult result) {
     switch (result) {
       case ClashWin(:final winner):
         final winnerPlayer = winner == ClashSide.first
@@ -446,10 +764,10 @@ final class GameMatch {
           ...loserArea.removeFromPlay(),
           ...loserArea.takeTied(),
         ]);
-        winnerArea.discard(winnerArea.takeTied());
+        _discard(winnerArea.takeTied());
         final survivor = winnerArea.creatureInPlay!..spendClash();
         if (survivor.isExhausted) {
-          winnerArea.discard(winnerArea.removeFromPlay());
+          _discard(winnerArea.removeFromPlay());
         }
         _lossesSinceWin[winnerPlayer] = 0;
         _lossesSinceWin[loserPlayer] = _lossesSinceWin[loserPlayer]! + 1;
@@ -463,10 +781,10 @@ final class GameMatch {
         _lastClashWasTie = true;
     }
     for (final area in _areas.values) {
-      area.discard(area.spendEffectsClash());
+      _discard(area.spendEffectsClash());
     }
+    _lastClashResult = result;
     _phase = MatchPhase.reveal;
-    return result;
   }
 
   /// Revela cartas de [player] hasta que tenga una Creature en la mesa que
@@ -478,20 +796,26 @@ final class GameMatch {
     while (true) {
       if (area.creatureInPlay != null) {
         if (!_isDiscardedByEnemy(player)) return true;
-        area.discard(area.removeFromPlay());
+        _discard(area.removeFromPlay());
         continue;
       }
       final card = area.drawTop();
       if (card == null) return false;
       revealed.add(card);
       if (card is MatchCard<Creature>) {
-        area.putInPlay(card, order: _nextOrder++);
-        if (_classesSeen[player]!.add(card.card.cardClass)) {
-          _firstOfTheirClass.add(card);
-        }
+        _enterPlay(player, card);
       } else {
         area.addToHand(card);
       }
+    }
+  }
+
+  /// Pone a [creature] en la mesa de [player] y registra su entrada para
+  /// los Initial Effects pasivos (Diversity).
+  void _enterPlay(Player player, MatchCard<Creature> creature) {
+    area(player).putInPlay(creature, order: _nextOrder++);
+    if (_classesSeen[player]!.add(creature.card.cardClass)) {
+      _firstOfTheirClass.add(creature);
     }
   }
 
@@ -521,9 +845,8 @@ final class GameMatch {
   /// Con Tolerance, las primeras 3 Creatures derrotadas del jugador van a
   /// su propio Discard Stack, con sus Items.
   void _sendDefeated(Player loser, List<MatchCard> cards) {
-    final loserArea = area(loser);
-    final winnerArea = area(loser.opponent);
     var saved = false;
+    final trophies = <MatchCard>[];
     for (final card in cards) {
       if (card is MatchCard<Creature>) {
         saved =
@@ -532,11 +855,13 @@ final class GameMatch {
         if (saved) _toleranceUsed[loser] = _toleranceUsed[loser]! + 1;
       }
       if (saved) {
-        loserArea.discard([card]);
+        _discard([card]);
       } else {
-        winnerArea.addTrophies([card]);
+        trophies.add(card);
       }
     }
+    // En un solo lote, para que cada Item quede registrado con su Creature.
+    _addTrophies(loser.opponent, trophies);
   }
 
   /// Habilidades en juego de [owner], con el momento en que entraron: las de
@@ -604,11 +929,34 @@ final class GameMatch {
   /// Stack.
   void _finish() {
     for (final area in _areas.values) {
-      area.discard(area.removeFromPlay());
-      area.discard(area.takeTied());
-      area.discard(area.takeEffectsInPlay());
+      _discard(area.removeFromPlay());
+      _discard(area.takeTied());
+      _discard(area.takeEffectsInPlay());
     }
     _phase = MatchPhase.finished;
+  }
+
+  /// Manda [cards] al Discard Stack de su dueño.
+  ///
+  /// El Discard Stack solo guarda cartas propias. Una carta que el jugador
+  /// tenía prestada (Generosity) vuelve al Discard Stack de su dueño
+  /// original, aunque la haya usado el rival.
+  void _discard(Iterable<MatchCard> cards) {
+    for (final card in cards) {
+      area(card.owner).discard([card]);
+    }
+  }
+
+  /// Agrega [cards] al Trophy Stack de [winner].
+  ///
+  /// El Trophy Stack solo guarda cartas del rival. Una carta de [winner]
+  /// que estaba prestada (Generosity) no cuenta como trofeo: vuelve a su
+  /// Discard Stack.
+  void _addTrophies(Player winner, List<MatchCard> cards) {
+    _discard(cards.where((card) => card.owner == winner));
+    area(
+      winner,
+    ).addTrophies(cards.where((card) => card.owner != winner).toList());
   }
 
   void _requirePhase(MatchPhase expected) {

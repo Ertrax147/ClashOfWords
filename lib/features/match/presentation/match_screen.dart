@@ -475,6 +475,13 @@ class _SidePanel extends ConsumerWidget {
         'Clash!',
         controller.clash,
       ),
+      // El controlador cierra esta fase al resolver el Clash: aún no hay
+      // pantalla para decidir Commitment.
+      MatchPhase.afterClash => (
+        'Resolving the Clash.',
+        'Clash!',
+        controller.clash,
+      ),
       MatchPhase.finished => (
         _finalText(match),
         'Play again',

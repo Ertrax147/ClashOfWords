@@ -16,6 +16,9 @@ enum WinReason {
 
   /// Tenían igual Rarity y distinta Class, y tenía mayor Power.
   power,
+
+  /// Había perdido, pero su dueño usó el Initial Effect Commitment.
+  commitment,
 }
 
 /// Motivo por el que un Clash termina en Tie.

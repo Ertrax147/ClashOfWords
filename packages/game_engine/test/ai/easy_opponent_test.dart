@@ -71,6 +71,8 @@ void main() {
             if (match.phase == MatchPhase.play) opponent.playTurn(match);
           }
           if (match.phase == MatchPhase.play) match.resolveClash();
+          // Estas partidas no usan habilidades activas.
+          if (match.phase == MatchPhase.afterClash) match.declineCommitment();
         }
 
         // Cada jugador conserva sus cartas: las de su Deck más el Initial

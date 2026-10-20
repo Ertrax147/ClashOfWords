@@ -390,7 +390,7 @@ class _CreatureSlot extends StatelessWidget {
 
 /// Creatures apartadas por un Tie, apiladas con una etiqueta "Tie". Se
 /// quedan en la mesa hasta que un nuevo Clash decida a quién le
-/// corresponden (CU-04).
+/// corresponden (CU-01).
 class _TiedPile extends StatelessWidget {
   const _TiedPile({
     required this.cards,

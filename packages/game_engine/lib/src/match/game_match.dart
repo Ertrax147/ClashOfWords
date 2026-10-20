@@ -145,7 +145,7 @@ final class MatchResult {
 /// 3. [resolveClash]: se resuelve el Clash y las cartas van a su pila.
 ///
 /// Si un Clash termina en Tie, las dos Creatures se apartan y se juega un
-/// nuevo Clash que define también el empatado (CU-04).
+/// nuevo Clash que define también el empatado (CU-01).
 ///
 /// La partida termina cuando un jugador necesita revelar una Creature y su
 /// Deck está vacío. Las Creatures que siguen en la mesa o apartadas por un
@@ -507,7 +507,7 @@ final class GameMatch {
   }
 
   /// Indica si hay un Tie sin resolver: el próximo Clash define también
-  /// los Clashes empatados (CU-04).
+  /// los Clashes empatados (CU-01).
   bool get hasPendingTie =>
       _areas.values.any((area) => area.tiedCards.isNotEmpty);
 
@@ -676,7 +676,7 @@ final class GameMatch {
     return revealed;
   }
 
-  /// Resuelve el Clash entre las dos Creatures en la mesa (RF-04, CU-04).
+  /// Resuelve el Clash entre las dos Creatures en la mesa (RF-04, CU-01).
   ///
   /// Si hay ganador:
   /// - La perdedora y su Item van al Trophy Stack del ganador, aunque le
@@ -925,7 +925,7 @@ final class GameMatch {
 
   /// Termina la partida: las Creatures que siguen en la mesa o apartadas
   /// por un Tie vuelven al Discard Stack de su dueño, porque nadie las
-  /// venció (CU-04, flujo 2a). Los Effects en juego también van al Discard
+  /// venció (CU-01, T2a). Los Effects en juego también van al Discard
   /// Stack.
   void _finish() {
     for (final area in _areas.values) {

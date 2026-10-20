@@ -4,7 +4,8 @@ App móvil educativa para tablets Android que digitaliza un juego de cartas fís
 
 ## Fuentes de verdad
 
-- Requisitos: `docs/SRS.md` (IEEE 830: RF-01 a RF-18, RNF-01 a RNF-10, CU-01 a CU-11). Es largo: leer solo la sección o el requisito que se esté implementando.
+- `docs/SRS.md` es la versión 1.4 (15-10-2026) del SRS, convertida del documento oficial. Reemplaza a la copia anterior (v1.1), que estaba desactualizada. Las decisiones de arquitectura y datos vigentes son las de la sección "Arquitectura y datos".
+- Requisitos: `docs/SRS.md` (IEEE 830: RF-01 a RF-18, RNF-01 a RNF-10, CU-01 a CU-15). Es largo: leer solo la sección o el requisito que se esté implementando.
 - Reglas del juego: el manual de Orlando no está en el repositorio (es su material). Las reglas relevantes están en docs/SRS.md (RF-04, RF-10) y en las decisiones de más abajo. Si hay dudas, preguntar al usuario.
 - RF-04 y RF-10 del SRS están desactualizados en lo que cubre la sección "Duration, Rarity y Class de Items": mientras no se corrija el SRS, mandan esas decisiones.
 - Si el código y el SRS se contradicen, avisar y no decidir solo.
@@ -40,8 +41,8 @@ Definidas a partir de las cartas y del manual, porque el SRS no las recoge. Pend
 - Items, Effects e Initial Effects pueden cambiar la Rarity o la Duration de una Creature. Se conserva siempre la mayor entre la que tenía y la que recibe: nunca empeoran a la Creature. Los modificadores de un Item valen mientras esté equipado; los de un Effect, mientras dure.
 - Un Item sin Class puede equiparse a cualquier Creature (en las cartas hay Items Rare, Epic y Legendary sin Class). Un Item con Class solo se equipa a una Creature que comparta al menos una Class con él.
 - Cada Creature tiene una sola Class; los Items pueden tener varias. En un Clash con igual Rarity y la misma Class hay Tie, sin importar el Power (Paso 3 del manual).
-- En un Tie, las dos Creatures se apartan con sus Items aunque les quede Duration, y se revelan Creatures nuevas (CU-04). Al resolverse, las apartadas del ganador van a su Discard Stack y las del perdedor al Trophy Stack del ganador.
-- La ganadora del Clash que resuelve un Tie respeta su propia Duration: si le quedan Clashes, sigue en la mesa. CU-04 dice que las ganadoras van al Discard Stack, pero se escribió antes de definir la Duration.
+- En un Tie, las dos Creatures se apartan con sus Items aunque les quede Duration, y se revelan Creatures nuevas (CU-01, flujo de desempate T1 a T5). Al resolverse, las apartadas del ganador van a su Discard Stack y las del perdedor al Trophy Stack del ganador.
+- La ganadora del Clash que resuelve un Tie respeta su propia Duration: si le quedan Clashes, sigue en la mesa. CU-01 (T4) dice que las ganadoras van al Discard Stack, pero se escribió antes de definir la Duration.
 
 ### Effects y habilidades
 
@@ -65,6 +66,47 @@ Interpretaciones del equipo, porque el manual no da detalles. Pendientes de vali
 - Friendship: +3 solo en el Clash que sigue a un Tie. No se acumula con varios Ties seguidos.
 - Excellence: +1 solo en el Clash que sigue a una victoria, aunque pelee la misma Creature.
 - Empathy: copia el Initial Effect del rival, pasivo o activo (el activo se puede usar una vez). Si ambos tienen Empathy, no copia nada.
+
+### Initial Effects activos
+
+Interpretaciones del equipo, tomadas de `docs/initial-effects.md`, porque el manual no da detalles. **Pendientes de validar con Orlando.** Las que ya vienen del texto de la carta no se repiten aquí.
+
+- Todas se usan una vez por partida, en la fase de jugar (antes de resolver el Clash). La excepción es Commitment, que se usa después de perder un Clash. Una jugada no permitida se rechaza con un motivo.
+- Recycle: se elige una Creature del propio Discard Stack. Vuelve sola al Deck; si tenía un Item, este se queda en el Discard Stack. Sin Creatures en el Discard Stack no se puede usar.
+- Responsibility (activa): igual que Recycle, pero con un Item. Vuelve solo el Item, aunque su Creature siga en el Discard Stack.
+- Loyalty: la Creature propia que está en el Trophy Stack del rival vuelve al Discard Stack propio, con sus Items, y el rival pierde ese trofeo. Un Item que el rival le quitó con Kindness no vuelve.
+- Leadership: "Duración: 3 Clashes" cuenta el Clash en que se usa. Si la Creature ya tenía más Duration, la conserva. Si pierde antes de completarla, va al Trophy Stack del rival.
+- Kindness: la carta superior del Deck rival pasa al Trophy Stack propio, sea Creature, Item o Effect. Si era la última, la partida termina al revelar el siguiente Clash.
+- Honesty: se ven las 3 cartas superiores de cada Deck y se reordenan ambas. Si un Deck tiene menos de 3, se reordenan las que tiene. El rival no recibe información (sin definir).
+- Generosity: se toma un Item o Effect de la Hand del rival (no uno que ya esté en juego). Sigue siendo del rival: al agotarse vuelve a su Discard Stack y nunca cuenta como trofeo.
+- Creativity: se elige una Creature del Deck y reemplaza a la de la mesa; la reemplazada va con su Item al Discard Stack propio, sin ser trofeo. La nueva pelea el Clash actual. Luego se baraja el Deck.
+- Commitment: al perder un Clash, el perdedor decide si la usa o la rechaza; hasta entonces el Clash no se aplica. Si la usa, gana ese Clash y mueve una Creature de su Trophy Stack, con sus Items, al Discard Stack del rival (si no tiene ninguna, solo gana). Si la rechaza, el Clash se aplica como se resolvió y puede usarla en otro. Un Tie no abre la decisión. Ningún Effect del rival puede impedirla.
+- Empathy: copia también la habilidad activa del rival, y se puede usar una vez. Si ambos tienen Empathy, ninguno copia nada.
+
+### Arquitectura y datos
+
+Lo que el equipo decidió, según el contrato de la API v1.0 y el SRS actualizado. Cada punto dice si ya está en el repo o es **decidido, aún no implementado**.
+
+**Ya implementado**
+
+- El proyecto es un workspace de Dart: la app (`lib/`) y el motor (`packages/game_engine`). El motor es Dart puro, sin Flutter, y un test falla si se le agrega Flutter como dependencia (RNF-09). Los 16 Initial Effects tienen lógica fija en el motor.
+- La app sigue clean architecture por funcionalidad: cada carpeta de `lib/features/` tiene `domain/`, `data/` y `presentation/`. El estado se maneja con Riverpod.
+- Catálogo: 422 cartas en `assets/catalog/cards.json`, con imágenes en `assets/cards/<id>.jpg`, leídas a través de la interfaz `CatalogRepository`.
+- Cada copia de una carta en la partida es una `MatchCard` con su dueño: el Discard Stack solo guarda cartas propias y el Trophy Stack solo cartas del rival.
+
+**Decidido, aún no implementado** (el repo todavía no usa Supabase, drift ni Nearby Connections)
+
+- Backend: Supabase (PostgreSQL con 14 tablas, Auth, Storage y Edge Functions). Las Edge Functions son código del proyecto, y Supabase va dentro del sistema. El contrato de la API v1.0 tiene 28 endpoints en 6 grupos; las reglas del juego no usan API.
+- Estudiante y profesor usan la misma app según su rol; el panel del profesor va dentro de ella.
+- Base local: SQLite con drift, offline-first, con cola de sincronización (outbox). Es una copia parcial del catálogo para jugar sin conexión, con tablas propias de sesión, cola de sincronización, historial y metadatos. La nube es la fuente de verdad: si un dato no coincide, manda la nube.
+- Login: el estudiante entra solo con nombre de usuario; el profesor, con credenciales y PIN. El login pasa por Edge Functions, no directo por Auth.
+- El motor corre en la tablet. En 1 vs 1 lo corre la tablet que envía el desafío.
+- Conectividad 1 vs 1: Google Nearby Connections, sin internet.
+- El servidor decide monedas, sobres y canjes. La compra de sobres usa `Idempotency-Key`. El intercambio de cartas usa un `partida_id` único.
+- Catálogo: la app trae una copia base y sincroniza las diferencias con `actualizada_en`.
+- IDs: las cartas usan un slug de texto estable; el resto, UUID generado en la tablet.
+- Los Initial Effects no se crean desde el panel: solo se editan nombre, imagen, audio y traducción.
+- Sin internet se puede: jugar contra el sistema y 1 vs 1 local, armar mazos, ver la colección, escuchar audios guardados y ver el historial. Requieren conexión: el primer login en una tablet nueva, comprar sobres, canjear códigos, actualizar el catálogo y el panel del profesor.
 
 ## Flujo de Git
 

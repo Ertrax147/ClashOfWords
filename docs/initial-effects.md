@@ -12,7 +12,7 @@ Guía de referencia de los 16 Initial Effects: qué dice cada carta, qué hace h
 - **Implementado sin validar:** el motor lo hace así, pero nadie lo decidió; es consecuencia de cómo se programó.
 - **Sin definir:** nadie lo ha definido y el motor puede no cubrirlo bien. Es una pregunta abierta.
 
-La columna **En el código** dice si el motor (`packages/game_engine`) ya hace lo que describe el caso. Se marcó leyendo el código y después se verificó: `flutter test` pasa (197 tests en `packages/game_engine`, 22 en la raíz) y `flutter analyze` no reporta problemas. Pasar los tests no prueba que cada caso esté cubierto, así que cada caso se revisó además leyendo el código del motor. "Sí" significa que el motor lo hace, aunque la pantalla de partida aún no tenga botón para las habilidades activas; "Sin decisión" significa que no hay regla definida (debajo se anota lo que hace hoy el motor); "Inalcanzable" significa que la comprobación existe en el código, pero ninguna jugada real llega a ella. Un caso de la interfaz (Tolerance, pantalla de partida) se cumple en `lib/`, no en el motor.
+La columna **En el código** dice si el motor (`packages/game_engine`) ya hace lo que describe el caso. Se marcó leyendo el código y después se verificó: `flutter test` pasa (197 tests en `packages/game_engine`, 22 en la raíz) y `flutter analyze` no reporta problemas. Pasar los tests no prueba que cada caso esté cubierto, así que cada caso se revisó además leyendo el código del motor. "Sí" significa que el motor lo hace, y la pantalla de partida ya permite usar las habilidades activas del estudiante; "Sin decisión" significa que no hay regla definida (debajo se anota lo que hace hoy el motor); "Inalcanzable" significa que la comprobación existe en el código, pero ninguna jugada real llega a ella. Un caso de la interfaz (Tolerance, pantalla de partida) se cumple en `lib/`, no en el motor.
 
 La columna **Test** dice si hay un test automático con nombre propio que cubra el caso. "No" no significa que esté mal: significa que nada lo vigila.
 
@@ -23,7 +23,7 @@ La columna **Test** dice si hay un test automático con nombre propio que cubra 
 - **Empathy** copia el Initial Effect del rival (pasivo y activo). Si ambos tienen Empathy, ninguno copia nada.
 - Cada Trophy Stack solo guarda cartas del rival y cada Discard Stack solo cartas propias. Una carta prestada (Generosity) vuelve al Discard Stack de su dueño.
 - Un Effect del rival que impide jugar cartas no cancela lo que ya está en juego. Commitment no puede ser impedido por ningún Effect.
-- Los pasivos actúan solos. Las habilidades activas todavía no tienen botón en la pantalla de partida ni las usa el rival del sistema.
+- Los pasivos actúan solos. La pantalla de partida ya tiene el botón y los selectores para las habilidades activas del estudiante, y la pantalla de decisión de Commitment; el rival del sistema todavía no las usa.
 
 ## Resumen
 
@@ -272,13 +272,14 @@ La columna **Test** dice si hay un test automático con nombre propio que cubra 
 | La Creature en la mesa queda con Duration de 3 Clashes, contando el actual | Implementado sin validar | Sí | Sí |
 | Si ya tenía una Duration mayor, la conserva | Decidido | Sí | Sí |
 | Se mantiene 3 Clashes y después va al Discard Stack de su dueño | Decidido | Sí | Sí |
-| Si pierde antes de completar la Duration, va al Trophy Stack del rival | Decidido | Sí | No |
+| Si pierde antes de completar la Duration, va al Trophy Stack del rival | Decidido | Sí | Sí |
 | Si no hay Creature en la mesa, no se puede usar *(La comprobación existe, pero ninguna jugada real llega a ella: en la fase de jugar siempre hay Creature, y fuera de ella se rechaza antes por fase incorrecta. No lleva test.)* | Implementado sin validar | Inalcanzable | No |
 
 **Tests que lo cubren**
 
 - `keeps the creature in play for 3 clashes`
 - `does not worsen a creature with a longer duration`
+- `a creature that loses before its duration ends is a trophy`
 - `can only be used once per game`
 
 **Dudas para confirmar con Orlando**
@@ -571,7 +572,7 @@ La columna **Test** dice si hay un test automático con nombre propio que cubra 
 | Si no tiene Creatures que mover, solo gana el Clash | Implementado sin validar | Sí | Sí |
 | Si tiene Creatures que mover, debe elegir una | Implementado sin validar | Sí | Sí |
 | Si rechaza usarla, el Clash se aplica como se resolvió | Implementado sin validar | Sí | Sí |
-| Si rechaza usarla, la habilidad sigue disponible para otro Clash | Implementado sin validar | Sí | No |
+| Si rechaza usarla, la habilidad sigue disponible para otro Clash | Implementado sin validar | Sí | Sí |
 | Un Tie no abre la decisión, y el ganador del Clash no la recibe | Manual | Sí | Sí |
 | Una vez usada, no se vuelve a ofrecer | Decidido | Sí | Sí |
 | Con Empathy contra un rival con Commitment, también se puede usar | Decidido | Sí | Sí |
@@ -581,6 +582,7 @@ La columna **Test** dice si hay un test automático con nombre propio que cubra 
 
 - `opens a decision for the loser without applying the clash`
 - `declining it applies the clash as it was resolved`
+- `declining it keeps it available for a later lost clash`
 - `wins the lost clash, even with nothing to move`
 - `moves a creature of the own trophy stack to the rival discard`
 - `requires choosing a creature when there are any to move`
@@ -594,6 +596,9 @@ La columna **Test** dice si hay un test automático con nombre propio que cubra 
 
 - ¿Se puede rechazar Commitment en un Clash y usarlo en otro?
 - ¿Los Items de la Creature movida también van al Discard del rival? Hoy sí.
+- ¿Es intencional que Commitment sea una defensa con costo? Ganas el Clash perdido, pero debes devolver al rival un trofeo tuyo. Si no hay trofeos que devolver, solo ganas.
+- ¿Se puede devolver la Creature que acabas de vencer con Commitment? Hoy no: solo se eligen trofeos que ya estaban en el Trophy Stack antes del Clash. La carta dice "gana un Clash perdido. Luego mueve una Creature…", y en ese momento la Creature recién vencida ya sería un trofeo.
+- ¿"Tu Trophy Stack" es el del jugador o el del enemigo? Hoy se lee literal (el del jugador). Si fuera el del enemigo, como en Loyalty, la carta recuperaría una Creature propia en vez de devolver un trofeo.
 
 ## Preguntas para Orlando
 
@@ -667,18 +672,19 @@ Reunidas desde las fichas.
 
 - ¿Se puede rechazar Commitment en un Clash y usarlo en otro?
 - ¿Los Items de la Creature movida también van al Discard del rival? Hoy sí.
+- ¿Es intencional que Commitment sea una defensa con costo? Ganas el Clash perdido, pero debes devolver al rival un trofeo tuyo. Si no hay trofeos que devolver, solo ganas.
+- ¿Se puede devolver la Creature que acabas de vencer con Commitment? Hoy no: solo se eligen trofeos que ya estaban en el Trophy Stack antes del Clash. La carta dice "gana un Clash perdido. Luego mueve una Creature…", y en ese momento la Creature recién vencida ya sería un trofeo.
+- ¿"Tu Trophy Stack" es el del jugador o el del enemigo? Hoy se lee literal (el del jugador). Si fuera el del enemigo, como en Loyalty, la carta recuperaría una Creature propia en vez de devolver un trofeo.
 
 ## Tests por mejorar
 
 Casos con "Test = Sí" cuyo test no cubre todo lo que dice el caso. Se completan en la Tarea 2.
 
 - **Commitment, "Mueve una Creature de su Trophy Stack, con sus Items, al Discard Stack del rival":** el test (`moves a creature of the own trophy stack to the rival discard`) no usa Items.
-- **Commitment, "Si rechaza usarla, la habilidad sigue disponible para otro Clash":** `declining it applies the clash as it was resolved` solo comprueba que `hasUsedActive` sigue en falso; no comprueba que la decisión se vuelva a abrir en un Clash posterior.
 - **Creativity, "Elige una Creature del Deck, la juega y baraja el Deck":** `plays the chosen creature in place of the one on the table` usa `unorderedEquals`, así que no verifica que el Deck se baraje.
 - **Honesty, "Si un Deck tiene menos de 3 cartas, se reordenan las que tiene":** `works when a deck has fewer than 3 cards` solo llama a `checkUseInitialEffect`; no usa la habilidad con `useInitialEffect`.
 
 ## Qué falta
 
-- Botón y selector de carta en la pantalla de partida para las 9 habilidades activas (Honesty necesita reordenar 3 + 3 cartas).
 - Que el rival Fácil use sus habilidades activas, y el rival Normal (RF-15).
 - Validar con Orlando las dudas de arriba.

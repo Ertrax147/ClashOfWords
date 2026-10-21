@@ -61,10 +61,12 @@ MatchViewState viewOf(ProviderContainer container) =>
 MatchController controllerOf(ProviderContainer container) =>
     container.read(matchControllerProvider.notifier);
 
-/// Da por vistos todos los eventos pendientes (cartas reveladas, etc.),
-/// como si el estudiante los hubiera mirado.
+/// Da por vistos todos los eventos pendientes (cartas reveladas, etc.) y
+/// termina la animación de cartas en curso, como si el estudiante hubiera
+/// esperado a que acabaran.
 void skipEvents(ProviderContainer container) {
   while (viewOf(container).events.isNotEmpty) {
     controllerOf(container).dismissEvent();
   }
+  controllerOf(container).finishMoves();
 }

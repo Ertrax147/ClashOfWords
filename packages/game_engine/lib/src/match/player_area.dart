@@ -51,7 +51,7 @@ final class PlayerArea {
   List<MatchCard> get trophyStack => List.unmodifiable(_trophyStack);
 
   /// Creatures apartadas por un Tie sin resolver, con sus Items. Siguen en
-  /// juego hasta que un nuevo Clash defina a quién le corresponden (CU-04).
+  /// juego hasta que un nuevo Clash defina a quién le corresponden (CU-01).
   List<MatchCard> get tiedCards => List.unmodifiable(_tiedCards);
 
   /// Effects que el jugador jugó y siguen en juego, en el orden en que se

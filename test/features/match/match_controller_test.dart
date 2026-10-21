@@ -59,6 +59,9 @@ void main() {
             if (view.match.phase == MatchPhase.play) controller.playCard(card);
           }
           if (view.match.phase == MatchPhase.play) controller.clash();
+          if (container.read(matchControllerProvider)!.awaitingCommitment) {
+            controller.declineCommitment();
+          }
         }
       }
 
@@ -126,6 +129,9 @@ void main() {
 
         final before = match().area(humanPlayer).trophyStack.length;
         controller.clash();
+        if (container.read(matchControllerProvider)!.awaitingCommitment) {
+          controller.declineCommitment();
+        }
         final result = container.read(matchControllerProvider)!.lastResult;
         final tolerance = match().hasPassive(
           systemPlayer,

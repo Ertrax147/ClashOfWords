@@ -5,6 +5,7 @@ import 'package:game_engine/game_engine.dart';
 
 import '../../catalog/domain/card_catalog.dart';
 import 'ability_text.dart';
+import 'match_zones.dart';
 
 /// Jugador que controla la persona en la tablet.
 const humanPlayer = Player.one;
@@ -20,10 +21,22 @@ final matchRandomProvider = Provider<Random>((ref) => Random());
 /// a la vez: una carta revelada o una carta que jugó el rival.
 class MatchEvent {
   /// Crea el evento de [card] con su [caption] en inglés.
-  const MatchEvent({required this.card, required this.caption});
+  const MatchEvent({
+    required this.card,
+    required this.caption,
+    this.cardId,
+    this.destination,
+  });
 
   /// Carta que se muestra en grande.
   final GameCard card;
+
+  /// Id de la copia de la carta en la partida, para no animarla dos veces.
+  final int? cardId;
+
+  /// Zona a la que va la carta cuando el aviso termina, o `null` si no va a
+  /// ninguna.
+  final Zone? destination;
 
   /// Frase que explica qué pasó, por ejemplo "You revealed Farm Drugstore".
   final String caption;
@@ -42,7 +55,18 @@ class MatchViewState {
     required this.revision,
     this.lastResult,
     this.events = const [],
+    this.moves,
+    this.logVisible,
   });
+
+  /// Cuántos mensajes del registro se muestran mientras hay animaciones
+  /// pendientes, o `null` si se muestran todos. Así el registro no cuenta
+  /// lo que pasó antes de que las cartas lleguen a su lugar.
+  final int? logVisible;
+
+  /// Cartas que acaban de cambiar de zona y la pantalla anima, o `null` si no
+  /// hay ninguna animación pendiente.
+  final MoveBatch? moves;
 
   /// Eventos que la pantalla todavía no termina de mostrar, en orden. Mientras
   /// haya alguno, los botones de la partida esperan.
@@ -63,6 +87,52 @@ class MatchViewState {
   /// Número que cambia con cada acción.
   final int revision;
 
+  /// Si hay avisos o cartas viajando: lo que muestra la mesa todavía no
+  /// coincide con el estado real de la partida.
+  bool get animating => events.isNotEmpty || moves != null;
+
+  /// Ids de las cartas que todavía no deben verse en su lugar de destino,
+  /// porque están por llegar: las de los avisos pendientes y las que viajan.
+  Set<int> get hiddenCardIds => {
+    for (final event in events)
+      if (event.cardId != null) event.cardId!,
+    for (final move in moves?.moves ?? <MatchMove>[]) move.card.id,
+  };
+
+  /// Mensajes del registro que se muestran ahora.
+  List<String> get visibleLog {
+    final visible = logVisible;
+    return visible == null || visible >= log.length
+        ? log
+        : log.sublist(0, visible);
+  }
+
+  /// Copia el estado con los eventos y el lote de movimientos indicados.
+  ///
+  /// Cuando ya no queda nada animándose, el registro vuelve a mostrarse
+  /// completo.
+  MatchViewState copyWith({
+    List<String>? log,
+    ClashResult? lastResult,
+    List<MatchEvent>? events,
+    MoveBatch? moves,
+    bool clearMoves = false,
+  }) {
+    final newEvents = events ?? this.events;
+    final newMoves = clearMoves ? null : (moves ?? this.moves);
+    final done = newEvents.isEmpty && newMoves == null;
+    return MatchViewState(
+      match: match,
+      catalog: catalog,
+      log: log ?? this.log,
+      revision: revision + 1,
+      lastResult: lastResult ?? this.lastResult,
+      events: newEvents,
+      moves: newMoves,
+      logVisible: done ? null : logVisible,
+    );
+  }
+
   /// Si el estudiante perdió el Clash y debe decidir si usa Commitment.
   ///
   /// Mientras no decida, el Clash no se aplicó: las Creatures siguen en la
@@ -81,6 +151,12 @@ class MatchController extends Notifier<MatchViewState?> {
   /// Cartas de cada Discard Stack antes del Clash que se está resolviendo,
   /// para explicar qué Creatures salvó Tolerance.
   Map<Player, int> _discardsBeforeClash = const {};
+
+  /// Dónde estaba cada carta después de la última jugada, para saber qué
+  /// cartas se movieron en la siguiente.
+  ZoneSnapshot _zones = const {};
+
+  int _lastBatchId = 0;
 
   @override
   MatchViewState? build() => null;
@@ -114,6 +190,7 @@ class MatchController extends Notifier<MatchViewState?> {
       ],
       revision: 0,
     );
+    _zones = snapshotZones(match);
   }
 
   /// Revela las Creatures del próximo Clash. Si la partida sigue, el
@@ -135,10 +212,14 @@ class MatchController extends Notifier<MatchViewState?> {
         events.add(switch (play) {
           EquippedItem(:final card) => MatchEvent(
             card: card.card,
+            cardId: card.id,
+            destination: const Zone(systemPlayer, ZoneKind.creature),
             caption: 'Opponent equipped ${card.card.name}',
           ),
           PlayedEffect(:final card) => MatchEvent(
             card: card.card,
+            cardId: card.id,
+            destination: const Zone(systemPlayer, ZoneKind.effects),
             caption: 'Opponent played ${card.card.name}',
           ),
         });
@@ -154,14 +235,14 @@ class MatchController extends Notifier<MatchViewState?> {
   void dismissEvent() {
     final current = state;
     if (current == null || current.events.isEmpty) return;
-    state = MatchViewState(
-      match: current.match,
-      catalog: current.catalog,
-      log: current.log,
-      revision: current.revision + 1,
-      lastResult: current.lastResult,
-      events: current.events.sublist(1),
-    );
+    state = current.copyWith(events: current.events.sublist(1));
+  }
+
+  /// Termina la animación de cartas en curso.
+  void finishMoves() {
+    final current = state;
+    if (current == null || current.moves == null) return;
+    state = current.copyWith(clearMoves: true);
   }
 
   MatchEvent _revealEvent(Player player, MatchCard card) {
@@ -171,6 +252,11 @@ class MatchController extends Notifier<MatchViewState?> {
     };
     return MatchEvent(
       card: card.card,
+      cardId: card.id,
+      destination: Zone(
+        player,
+        card is MatchCard<Creature> ? ZoneKind.creature : ZoneKind.hand,
+      ),
       caption: '${_who(player)} revealed ${card.card.name} → $destination',
     );
   }
@@ -311,6 +397,8 @@ class MatchController extends Notifier<MatchViewState?> {
       if (stolen != null)
         MatchEvent(
           card: stolen.card,
+          cardId: stolen.id,
+          destination: const Zone(humanPlayer, ZoneKind.trophy),
           caption: "You took ${stolen.card.name} from your opponent's Deck",
         ),
     ];
@@ -360,22 +448,43 @@ class MatchController extends Notifier<MatchViewState?> {
         }
       }
     }
-    _update(messages, lastResult: result);
+    _update(messages, lastResult: result, clashResult: result);
   }
 
   void _update(
     List<String> messages, {
     ClashResult? lastResult,
+    ClashResult? clashResult,
     List<MatchEvent> newEvents = const [],
   }) {
     final current = state!;
+    // Las cartas que cambiaron de zona se animan, salvo las que un aviso ya
+    // muestra y lleva a su lugar.
+    final after = snapshotZones(current.match);
+    final moves = diffZones(
+      _zones,
+      after,
+      ignore: {
+        for (final event in newEvents)
+          if (event.cardId != null) event.cardId!,
+      },
+    );
+    _zones = after;
+    final allEvents = [...current.events, ...newEvents];
+    final batch = moves.isEmpty
+        ? current.moves
+        : MoveBatch(id: ++_lastBatchId, moves: moves, clashResult: clashResult);
+    final animating = allEvents.isNotEmpty || batch != null;
     state = MatchViewState(
       match: current.match,
       catalog: current.catalog,
       log: [...current.log, ...messages],
       revision: current.revision + 1,
       lastResult: lastResult ?? current.lastResult,
-      events: [...current.events, ...newEvents],
+      events: allEvents,
+      moves: batch,
+      // El registro espera a que las cartas lleguen antes de contar qué pasó.
+      logVisible: animating ? (current.logVisible ?? current.log.length) : null,
     );
   }
 

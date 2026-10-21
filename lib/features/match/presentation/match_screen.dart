@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:game_engine/game_engine.dart';
 
 import '../../catalog/domain/card_catalog.dart';
+import 'ability_text.dart';
 import 'match_controller.dart';
+import 'widgets/ability_dialogs.dart';
 import 'widgets/card_piles.dart';
 import 'widgets/card_view.dart';
+import 'widgets/commitment_overlay.dart';
 import 'widgets/event_overlay.dart';
 import 'widgets/wood_background.dart';
 
@@ -71,6 +74,22 @@ class MatchScreen extends ConsumerWidget {
                 onDone: ref.read(matchControllerProvider.notifier).dismissEvent,
               ),
             ),
+          if (events.isEmpty && view.awaitingCommitment)
+            Positioned.fill(
+              child: CommitmentOverlay(
+                match: view.match,
+                catalog: view.catalog,
+                onUse: (choice) {
+                  final error = ref
+                      .read(matchControllerProvider.notifier)
+                      .useInitialEffect(choice);
+                  if (error != null) _showMessage(context, error);
+                },
+                onDecline: ref
+                    .read(matchControllerProvider.notifier)
+                    .declineCommitment,
+              ),
+            ),
         ],
       ),
     );
@@ -90,6 +109,10 @@ class MatchScreen extends ConsumerWidget {
     return [byHeight, byWidth].reduce((a, b) => a < b ? a : b).clamp(60, 240);
   }
 }
+
+/// Alto de pantalla por debajo del cual el panel lateral se muestra
+/// compacto: los teléfonos en horizontal miden menos de 450 px de alto.
+const _compactHeight = 600.0;
 
 const _textColor = Colors.white;
 const _mutedColor = Colors.white70;
@@ -193,10 +216,17 @@ class _Board extends StatelessWidget {
       children: [
         _cell(SizedBox(height: cardHeight)),
         _cell(
-          CardView(
-            card: area.initialEffect.card,
-            catalog: view.catalog,
-            height: cardHeight,
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CardView(
+                card: area.initialEffect.card,
+                catalog: view.catalog,
+                height: cardHeight,
+              ),
+              if (view.match.hasUsedActive(player))
+                const Positioned(left: 4, bottom: 4, child: _Tag('Used')),
+            ],
           ),
         ),
         SizedBox(
@@ -459,11 +489,14 @@ class _SidePanel extends ConsumerWidget {
     final controller = ref.read(matchControllerProvider.notifier);
     final match = view.match;
     final canPlay = match.phase == MatchPhase.play;
+    // En un teléfono (pantalla baja) todo se achica para que el registro de
+    // la partida tenga espacio.
+    final compact = MediaQuery.sizeOf(context).height < _compactHeight;
 
     final (
       String hint,
       String label,
-      VoidCallback onPressed,
+      VoidCallback? onPressed,
     ) = switch (match.phase) {
       MatchPhase.reveal => (
         'Reveal the next Creatures.',
@@ -475,12 +508,12 @@ class _SidePanel extends ConsumerWidget {
         'Clash!',
         controller.clash,
       ),
-      // El controlador cierra esta fase al resolver el Clash: aún no hay
-      // pantalla para decidir Commitment.
+      // El estudiante perdió el Clash y decide sobre Commitment en la
+      // pantalla de decisión.
       MatchPhase.afterClash => (
-        'Resolving the Clash.',
+        'Decide if you use Commitment.',
         'Clash!',
-        controller.clash,
+        null,
       ),
       MatchPhase.finished => (
         _finalText(match),
@@ -491,7 +524,7 @@ class _SidePanel extends ConsumerWidget {
 
     return Container(
       color: Colors.black38,
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compact ? 8 : 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -500,28 +533,42 @@ class _SidePanel extends ConsumerWidget {
             ref,
             title: "Opponent's hand",
             player: systemPlayer,
-            height: cardHeight * 0.55,
+            height: cardHeight * (compact ? 0.4 : 0.55),
             interactive: false,
           ),
-          const SizedBox(height: 8),
-          Text(hint, style: const TextStyle(color: _textColor, fontSize: 15)),
-          const SizedBox(height: 6),
+          SizedBox(height: compact ? 4 : 8),
+          // En pantallas bajas el botón ya dice qué hacer; solo se deja el texto
+          // del final de la partida.
+          if (!compact || match.phase == MatchPhase.finished) ...[
+            Text(
+              hint,
+              style: TextStyle(color: _textColor, fontSize: compact ? 13 : 15),
+            ),
+            SizedBox(height: compact ? 4 : 6),
+          ],
           FilledButton(
             onPressed: onPressed,
             style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: EdgeInsets.symmetric(vertical: compact ? 4 : 14),
+              minimumSize: compact ? const Size.fromHeight(32) : null,
+              tapTargetSize: compact ? MaterialTapTargetSize.shrinkWrap : null,
             ),
-            child: Text(label, style: const TextStyle(fontSize: 18)),
+            child: Text(label, style: TextStyle(fontSize: compact ? 15 : 18)),
           ),
+          if (match.activeKindOf(humanPlayer) != null &&
+              match.phase != MatchPhase.finished) ...[
+            SizedBox(height: compact ? 4 : 6),
+            _AbilityButton(view: view, compact: compact),
+          ],
           if (match.phase == MatchPhase.finished)
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Back to menu'),
             ),
-          const SizedBox(height: 8),
+          SizedBox(height: compact ? 4 : 8),
           Expanded(
             child: Container(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.all(compact ? 6 : 8),
               decoration: BoxDecoration(
                 color: Colors.black26,
                 borderRadius: BorderRadius.circular(8),
@@ -534,26 +581,30 @@ class _SidePanel extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(vertical: 2),
                       child: Text(
                         message,
-                        style: const TextStyle(color: _textColor, fontSize: 13),
+                        style: TextStyle(
+                          color: _textColor,
+                          fontSize: compact ? 12 : 13,
+                        ),
                       ),
                     ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: compact ? 4 : 8),
           _handRow(
             context,
             ref,
             title: canPlay ? 'Your hand: tap a card to play it' : 'Your hand',
             player: humanPlayer,
-            height: cardHeight * 0.9,
+            height: cardHeight * (compact ? 0.75 : 0.9),
             interactive: canPlay,
           ),
-          const Text(
-            'Long press any card to see it bigger.',
-            style: TextStyle(color: _mutedColor, fontSize: 12),
-          ),
+          if (!compact)
+            const Text(
+              'Long press any card to see it bigger.',
+              style: TextStyle(color: _mutedColor, fontSize: 12),
+            ),
         ],
       ),
     );
@@ -610,11 +661,7 @@ class _SidePanel extends ConsumerWidget {
 
   void _play(BuildContext context, WidgetRef ref, MatchCard card) {
     final error = ref.read(matchControllerProvider.notifier).playCard(card);
-    if (error != null) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error)));
-    }
+    if (error != null) _showMessage(context, error);
   }
 
   String _finalText(GameMatch match) {
@@ -626,6 +673,97 @@ class _SidePanel extends ConsumerWidget {
     };
     return '$outcome Trophies: ${result.trophiesOfOne} - '
         '${result.trophiesOfTwo}';
+  }
+}
+
+void _showMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// Botón para usar la habilidad activa del Initial Effect del estudiante.
+///
+/// Se ve apagado cuando no se puede usar ahora, y al tocarlo explica por
+/// qué. Commitment no se usa desde aquí: aparece cuando el estudiante pierde
+/// un Clash.
+class _AbilityButton extends ConsumerWidget {
+  const _AbilityButton({required this.view, this.compact = false});
+
+  final MatchViewState view;
+
+  /// Si se muestra más chico, para pantallas bajas.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final match = view.match;
+    final kind = match.activeKindOf(humanPlayer)!;
+    final name = initialEffectName(kind);
+    final used = match.hasUsedActive(humanPlayer);
+    final isCommitment = kind == InitialEffectKind.commitment;
+    final enabled =
+        !isCommitment && match.checkUseInitialEffect(humanPlayer) == null;
+    final label = used
+        ? '$name (used)'
+        : isCommitment
+        ? '$name (after losing a Clash)'
+        : 'Use $name';
+    return OutlinedButton(
+      onPressed: () => _press(context, ref),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: enabled ? Colors.amberAccent : Colors.white54,
+        side: BorderSide(color: enabled ? Colors.amberAccent : Colors.white24),
+        padding: EdgeInsets.symmetric(vertical: compact ? 4 : 12),
+        minimumSize: compact ? const Size.fromHeight(30) : null,
+        tapTargetSize: compact ? MaterialTapTargetSize.shrinkWrap : null,
+      ),
+      child: Text(label, style: TextStyle(fontSize: compact ? 14 : 16)),
+    );
+  }
+
+  Future<void> _press(BuildContext context, WidgetRef ref) async {
+    final match = view.match;
+    final kind = match.activeKindOf(humanPlayer)!;
+    if (match.hasUsedActive(humanPlayer)) {
+      _showMessage(context, explain(InvalidPlayReason.alreadyUsed));
+      return;
+    }
+    if (kind == InitialEffectKind.commitment) {
+      _showMessage(context, 'You can use Commitment after you lose a Clash.');
+      return;
+    }
+    final reason = match.checkUseInitialEffect(humanPlayer);
+    if (reason != null) {
+      _showMessage(context, explain(reason));
+      return;
+    }
+
+    final InitialEffectChoice? choice;
+    switch (kind) {
+      case InitialEffectKind.leadership || InitialEffectKind.kindness:
+        choice = await confirmAbility(context, kind) ? const NoChoice() : null;
+      case InitialEffectKind.honesty:
+        choice = await reorderCards(
+          context,
+          cards: match.honestyCards(humanPlayer),
+          catalog: view.catalog,
+        );
+      default:
+        final card = await pickCard(
+          context,
+          kind: kind,
+          cards: match.activeOptions(humanPlayer),
+          catalog: view.catalog,
+        );
+        choice = card == null ? null : CardChoice(card);
+    }
+    if (choice == null || !context.mounted) return;
+
+    final error = ref
+        .read(matchControllerProvider.notifier)
+        .useInitialEffect(choice);
+    if (error != null && context.mounted) _showMessage(context, error);
   }
 }
 

@@ -285,6 +285,28 @@ void main() {
       );
     });
 
+    test('a creature that loses before its duration ends is a trophy', () {
+      // Wolf (Power 5) gana el primer Clash y sigue en la mesa con 2 Clashes
+      // por delante, pero pierde contra Big (Power 9).
+      final match = matchOf(
+        [common('Wolf', wild, 5), common('Pup', wild, 1)],
+        [common('Rock', warrior, 1), common('Big', warrior, 9)],
+        oneEffect: initialEffectOf(InitialEffectKind.leadership),
+      )..revealCreatures();
+      match.useInitialEffect(Player.one);
+      match.resolveClash();
+      match.revealCreatures();
+      expect(
+        match.area(Player.one).creatureInPlay!.remaining,
+        ClashDuration(2),
+      );
+
+      match.resolveClash();
+
+      expect(names(match.area(Player.two).trophyStack), ['Wolf']);
+      expect(names(match.area(Player.one).discardStack), isEmpty);
+    });
+
     test('can only be used once per game', () {
       final match = leadershipMatch([common('Wolf', wild, 5)])
         ..useInitialEffect(Player.one);
@@ -864,6 +886,20 @@ void main() {
         const ClashWin(ClashSide.second, WinReason.power),
       );
       expect(match.hasUsedActive(Player.one), isFalse);
+    });
+
+    test('declining it keeps it available for a later lost clash', () {
+      final match = lostClash()..declineCommitment();
+      expect(match.hasUsedActive(Player.one), isFalse);
+
+      // En el Clash siguiente vuelve a perder (Pup 2 contra Big 2) y la
+      // decisión se abre otra vez.
+      match.revealCreatures();
+      match.resolveClash();
+
+      expect(match.phase, MatchPhase.afterClash);
+      expect(match.awaitingCommitment, Player.one);
+      expect(match.checkUseInitialEffect(Player.one), isNull);
     });
 
     test('wins the lost clash, even with nothing to move', () {

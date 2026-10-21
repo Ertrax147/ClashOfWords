@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:game_engine/game_engine.dart';
 
 import '../../catalog/domain/card_catalog.dart';
+import 'ability_text.dart';
 
 /// Jugador que controla la persona en la tablet.
 const humanPlayer = Player.one;
@@ -61,6 +62,14 @@ class MatchViewState {
 
   /// Número que cambia con cada acción.
   final int revision;
+
+  /// Si el estudiante perdió el Clash y debe decidir si usa Commitment.
+  ///
+  /// Mientras no decida, el Clash no se aplicó: las Creatures siguen en la
+  /// mesa.
+  bool get awaitingCommitment =>
+      match.phase == MatchPhase.afterClash &&
+      match.awaitingCommitment == humanPlayer;
 }
 
 /// Controla una partida contra el sistema en nivel Fácil (RF-15).
@@ -69,16 +78,29 @@ class MatchViewState {
 class MatchController extends Notifier<MatchViewState?> {
   static const _opponent = EasyOpponent(systemPlayer);
 
+  /// Cartas de cada Discard Stack antes del Clash que se está resolviendo,
+  /// para explicar qué Creatures salvó Tolerance.
+  Map<Player, int> _discardsBeforeClash = const {};
+
   @override
   MatchViewState? build() => null;
 
   /// Empieza una partida nueva con mazos al azar del [catalog] para ambos
   /// jugadores (mientras no exista el Deck Builder).
-  void startMatch(CardCatalog catalog) {
+  ///
+  /// [humanDeck] y [systemDeck] permiten elegir los mazos, y [shuffle] en
+  /// `false` respeta su orden: sirve para los tests.
+  void startMatch(
+    CardCatalog catalog, {
+    PlayerDeck? humanDeck,
+    PlayerDeck? systemDeck,
+    bool shuffle = true,
+  }) {
     final random = ref.read(matchRandomProvider);
     final match = GameMatch(
-      playerOne: randomDeck(catalog.cards, random),
-      playerTwo: randomDeck(catalog.cards, random),
+      playerOne: humanDeck ?? randomDeck(catalog.cards, random),
+      playerTwo: systemDeck ?? randomDeck(catalog.cards, random),
+      shuffle: shuffle,
       random: random,
     );
     state = MatchViewState(
@@ -193,31 +215,140 @@ class MatchController extends Notifier<MatchViewState?> {
 
   /// Resuelve el Clash actual.
   ///
-  /// Si el perdedor tiene Tolerance y sus Creatures derrotadas vuelven a su
-  /// Discard Stack en vez de ser trofeos, lo explica en el registro: si no,
-  /// parecería que el ganador no recibió nada.
+  /// Si el estudiante pierde y tiene Commitment sin usar, el Clash queda
+  /// pendiente hasta que decida ([useInitialEffect] o [declineCommitment]).
+  /// El rival del sistema todavía no usa habilidades activas, así que no
+  /// usa Commitment.
   void clash() {
     final current = state;
     if (current == null) return;
     final match = current.match;
-    final discardsBefore = {
+    _discardsBeforeClash = {
       for (final player in Player.values)
         player: match.area(player).discardStack.length,
     };
 
-    final result = match.resolveClash();
-    // Todavía no hay pantalla para decidir si se usa Commitment: por ahora
-    // el Clash se aplica tal como se resolvió.
-    if (match.phase == MatchPhase.afterClash) match.declineCommitment();
-    final messages = [describe(result)];
+    match.resolveClash();
+    if (match.phase == MatchPhase.afterClash) {
+      if (match.awaitingCommitment == humanPlayer) {
+        _update(['You lost the Clash. You can use Commitment to win it.']);
+        return;
+      }
+      match.declineCommitment();
+    }
+    _finishClash(match);
+  }
+
+  /// El estudiante decide no usar Commitment: el Clash se aplica como se
+  /// resolvió. Puede usarlo en otro Clash.
+  void declineCommitment() {
+    final current = state;
+    if (current == null) return;
+    final match = current.match;
+    if (match.phase != MatchPhase.afterClash) return;
+    match.declineCommitment();
+    _finishClash(match, first: ['You decided not to use Commitment.']);
+  }
+
+  /// El estudiante usa la habilidad activa de su Initial Effect con la
+  /// elección [choice] (ver [GameMatch.useInitialEffect]).
+  ///
+  /// Devuelve un mensaje en inglés si no se puede usar, para mostrárselo al
+  /// estudiante; `null` si se usó.
+  String? useInitialEffect([InitialEffectChoice choice = const NoChoice()]) {
+    final current = state;
+    if (current == null) return null;
+    final match = current.match;
+    final reason = match.checkUseInitialEffect(humanPlayer, choice);
+    if (reason != null) return explain(reason);
+
+    final kind = match.activeKindOf(humanPlayer)!;
+    final name = initialEffectName(kind);
+    final chosen = choice is CardChoice ? choice.card : null;
+    // Kindness roba una carta que nadie ha visto: se muestra al usarla.
+    final stolen = kind == InitialEffectKind.kindness
+        ? match.area(systemPlayer).deck.first
+        : null;
+
+    final revealed = match.useInitialEffect(humanPlayer, choice);
+
+    if (kind == InitialEffectKind.commitment) {
+      _finishClash(
+        match,
+        first: [
+          'You used Commitment: you win the Clash.',
+          if (chosen != null)
+            "${chosen.card.name} goes to your opponent's Discard Stack.",
+        ],
+        movedByCommitment: chosen,
+      );
+      return null;
+    }
+
+    final messages = [
+      switch (kind) {
+        InitialEffectKind.recycle || InitialEffectKind.responsibility =>
+          'You used $name: ${chosen!.card.name} goes back to your Deck.',
+        InitialEffectKind.leadership =>
+          'You used $name: your Creature stays in play for 3 Clashes.',
+        InitialEffectKind.kindness =>
+          'You used $name: you took ${stolen!.card.name} from your '
+              "opponent's Deck.",
+        InitialEffectKind.loyalty =>
+          'You used $name: ${chosen!.card.name} returns to your Discard '
+              'Stack.',
+        InitialEffectKind.honesty =>
+          'You used $name: you put the top cards back in your order.',
+        InitialEffectKind.creativity =>
+          'You used $name: ${chosen!.card.name} replaces your Creature.',
+        InitialEffectKind.generosity =>
+          'You used $name: you took ${chosen!.card.name} from your '
+              "opponent's hand.",
+        _ => 'You used $name.',
+      },
+    ];
+    final events = <MatchEvent>[
+      if (stolen != null)
+        MatchEvent(
+          card: stolen.card,
+          caption: "You took ${stolen.card.name} from your opponent's Deck",
+        ),
+    ];
+    for (final player in Player.values) {
+      for (final card in revealed[player]!) {
+        final event = _revealEvent(player, card);
+        events.add(event);
+        messages.add('${event.caption}.');
+      }
+    }
+    if (match.phase == MatchPhase.finished) messages.add(_endMessage(match));
+    _update(messages, newEvents: events);
+    return null;
+  }
+
+  /// Registra cómo terminó el Clash que acaba de aplicarse.
+  ///
+  /// Si el perdedor tiene Tolerance y sus Creatures derrotadas vuelven a su
+  /// Discard Stack en vez de ser trofeos, lo explica en el registro: si no,
+  /// parecería que el ganador no recibió nada. [movedByCommitment] es la
+  /// Creature que Commitment mandó al Discard Stack del rival, que no la
+  /// salvó Tolerance.
+  void _finishClash(
+    GameMatch match, {
+    List<String> first = const [],
+    MatchCard? movedByCommitment,
+  }) {
+    final result = match.lastClashResult!;
+    final messages = [...first, describe(result)];
     if (result case ClashWin(:final winner)) {
       final loser = winner == ClashSide.first ? Player.two : Player.one;
       if (match.hasPassive(loser, InitialEffectKind.tolerance)) {
         final saved = match
             .area(loser)
             .discardStack
-            .skip(discardsBefore[loser]!)
+            .skip(_discardsBeforeClash[loser] ?? 0)
             .whereType<MatchCard<Creature>>()
+            .where((card) => card != movedByCommitment)
             .map((card) => card.card.name)
             .toList();
         if (saved.isNotEmpty) {

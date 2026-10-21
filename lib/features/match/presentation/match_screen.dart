@@ -5,12 +5,15 @@ import 'package:game_engine/game_engine.dart';
 import '../../catalog/domain/card_catalog.dart';
 import 'ability_text.dart';
 import 'match_controller.dart';
+import 'match_zones.dart';
 import 'widgets/ability_dialogs.dart';
 import 'widgets/card_piles.dart';
 import 'widgets/card_view.dart';
 import 'widgets/commitment_overlay.dart';
 import 'widgets/event_overlay.dart';
+import 'widgets/move_layer.dart';
 import 'widgets/wood_background.dart';
+import 'widgets/zone_keys.dart';
 
 /// Pantalla de una partida contra el sistema (RF-04, RF-15).
 ///
@@ -31,66 +34,83 @@ class MatchScreen extends ConsumerWidget {
       return const Scaffold(body: Center(child: Text('No match started.')));
     }
     final events = view.events;
-    return Scaffold(
-      body: Stack(
-        children: [
-          WoodBackground(
-            child: SafeArea(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final cardHeight = _cardHeightFor(constraints);
-                  return Row(
-                    children: [
-                      _TrophyColumn(view: view, cardHeight: cardHeight * 0.7),
-                      Expanded(
-                        // Si la ventana es angosta, la mesa se achica en
-                        // vez de salirse de la pantalla.
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: _Board(
-                            view: view,
-                            cardHeight: cardHeight,
-                            gap: _gap,
-                            middleStrip: _middleStrip,
+    final moves = view.moves;
+    return ZoneKeyScope(
+      child: Scaffold(
+        body: Stack(
+          children: [
+            WoodBackground(
+              child: SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardHeight = _cardHeightFor(constraints);
+                    return Row(
+                      children: [
+                        _TrophyColumn(view: view, cardHeight: cardHeight * 0.7),
+                        Expanded(
+                          // Si la ventana es angosta, la mesa se achica en
+                          // vez de salirse de la pantalla.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: _Board(
+                              view: view,
+                              cardHeight: cardHeight,
+                              gap: _gap,
+                              middleStrip: _middleStrip,
+                            ),
                           ),
                         ),
-                      ),
-                      SizedBox(
-                        width: _sidePanelWidth,
-                        child: _SidePanel(view: view, cardHeight: cardHeight),
-                      ),
-                    ],
-                  );
-                },
+                        SizedBox(
+                          width: _sidePanelWidth,
+                          child: _SidePanel(view: view, cardHeight: cardHeight),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
-          ),
-          if (events.isNotEmpty)
-            Positioned.fill(
-              child: EventOverlay(
-                key: ObjectKey(events.first),
-                event: events.first,
-                catalog: view.catalog,
-                onDone: ref.read(matchControllerProvider.notifier).dismissEvent,
-              ),
-            ),
-          if (events.isEmpty && view.awaitingCommitment)
-            Positioned.fill(
-              child: CommitmentOverlay(
-                match: view.match,
-                catalog: view.catalog,
-                onUse: (choice) {
-                  final error = ref
+            if (events.isNotEmpty)
+              Positioned.fill(
+                child: EventOverlay(
+                  key: ObjectKey(events.first),
+                  event: events.first,
+                  catalog: view.catalog,
+                  onDone: ref
                       .read(matchControllerProvider.notifier)
-                      .useInitialEffect(choice);
-                  if (error != null) _showMessage(context, error);
-                },
-                onDecline: ref
-                    .read(matchControllerProvider.notifier)
-                    .declineCommitment,
+                      .dismissEvent,
+                ),
               ),
-            ),
-        ],
+            // Las cartas viajan cuando ya no hay avisos pendientes.
+            if (events.isEmpty && moves != null)
+              Positioned.fill(
+                child: MoveLayer(
+                  key: ValueKey(moves.id),
+                  batch: moves,
+                  catalog: view.catalog,
+                  onDone: ref
+                      .read(matchControllerProvider.notifier)
+                      .finishMoves,
+                ),
+              ),
+            if (events.isEmpty && moves == null && view.awaitingCommitment)
+              Positioned.fill(
+                child: CommitmentOverlay(
+                  match: view.match,
+                  catalog: view.catalog,
+                  onUse: (choice) {
+                    final error = ref
+                        .read(matchControllerProvider.notifier)
+                        .useInitialEffect(choice);
+                    if (error != null) _showMessage(context, error);
+                  },
+                  onDecline: ref
+                      .read(matchControllerProvider.notifier)
+                      .declineCommitment,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -108,6 +128,18 @@ class MatchScreen extends ConsumerWidget {
     final byWidth = (constraints.maxWidth - _sidePanelWidth - 260) / 3.2;
     return [byHeight, byWidth].reduce((a, b) => a < b ? a : b).clamp(60, 240);
   }
+}
+
+/// Las [cards] sin las que todavía no llegaron a su lugar (ver
+/// [MatchViewState.hiddenCardIds]).
+List<MatchCard> _shown(MatchViewState view, List<MatchCard> cards) {
+  final hidden = view.hiddenCardIds;
+  return hidden.isEmpty
+      ? cards
+      : [
+          for (final card in cards)
+            if (!hidden.contains(card.id)) card,
+        ];
 }
 
 /// Alto de pantalla por debajo del cual el panel lateral se muestra
@@ -133,18 +165,24 @@ class _TrophyColumn extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          TrophyFan(
-            title: "Opponent's\nTrophy Stack",
-            cards: view.match.area(systemPlayer).trophyStack,
-            catalog: view.catalog,
-            cardHeight: cardHeight,
+          ZoneMarker(
+            zone: const Zone(systemPlayer, ZoneKind.trophy),
+            child: TrophyFan(
+              title: "Opponent's\nTrophy Stack",
+              cards: _shown(view, view.match.area(systemPlayer).trophyStack),
+              catalog: view.catalog,
+              cardHeight: cardHeight,
+            ),
           ),
-          TrophyFan(
-            title: 'Trophy Stack',
-            cards: view.match.area(humanPlayer).trophyStack,
-            catalog: view.catalog,
-            cardHeight: cardHeight,
-            titleOnTop: true,
+          ZoneMarker(
+            zone: const Zone(humanPlayer, ZoneKind.trophy),
+            child: TrophyFan(
+              title: 'Trophy Stack',
+              cards: _shown(view, view.match.area(humanPlayer).trophyStack),
+              catalog: view.catalog,
+              cardHeight: cardHeight,
+              titleOnTop: true,
+            ),
           ),
         ],
       ),
@@ -195,13 +233,21 @@ class _Board extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _cell(
-          DiscardPile(
-            cards: area.discardStack,
-            catalog: view.catalog,
-            height: cardHeight,
+          ZoneMarker(
+            zone: Zone(player, ZoneKind.discard),
+            child: DiscardPile(
+              cards: _shown(view, area.discardStack),
+              catalog: view.catalog,
+              height: cardHeight,
+            ),
           ),
         ),
-        _cell(DeckPile(count: area.deck.length, height: cardHeight)),
+        _cell(
+          ZoneMarker(
+            zone: Zone(player, ZoneKind.deck),
+            child: DeckPile(count: area.deck.length, height: cardHeight),
+          ),
+        ),
         _CreatureSlot(view: view, player: player, height: cardHeight),
       ],
     );
@@ -211,6 +257,11 @@ class _Board extends StatelessWidget {
   /// Discard Stack, como en el manual).
   Widget _outerRow(Player player) {
     final area = view.match.area(player);
+    final hidden = view.hiddenCardIds;
+    final effects = [
+      for (final effect in area.effectsInPlay)
+        if (!hidden.contains(effect.effect.id)) effect,
+    ];
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -229,38 +280,41 @@ class _Board extends StatelessWidget {
             ],
           ),
         ),
-        SizedBox(
-          width: _creatureSlotWidth,
-          height: cardHeight,
-          child: area.effectsInPlay.isEmpty
-              ? Align(
-                  alignment: Alignment.centerLeft,
-                  child: EmptyCardSlot(height: cardHeight, label: 'Effects'),
-                )
-              : ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    for (final effect in area.effectsInPlay)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            CardView(
-                              card: effect.effect.card,
-                              catalog: view.catalog,
-                              height: cardHeight,
-                            ),
-                            Positioned(
-                              left: 4,
-                              bottom: 4,
-                              child: _Tag(_remainingText(effect.remaining)),
-                            ),
-                          ],
+        ZoneMarker(
+          zone: Zone(player, ZoneKind.effects),
+          child: SizedBox(
+            width: _creatureSlotWidth,
+            height: cardHeight,
+            child: effects.isEmpty
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: EmptyCardSlot(height: cardHeight, label: 'Effects'),
+                  )
+                : ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final effect in effects)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              CardView(
+                                card: effect.effect.card,
+                                catalog: view.catalog,
+                                height: cardHeight,
+                              ),
+                              Positioned(
+                                left: 4,
+                                bottom: 4,
+                                child: _Tag(_remainingText(effect.remaining)),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
+          ),
         ),
       ],
     );
@@ -281,7 +335,10 @@ class _Board extends StatelessWidget {
     final tied = Player.values
         .map((player) => match.area(player).tiedCards.length)
         .reduce((a, b) => a + b);
-    final text = match.hasPendingTie
+    // Mientras las cartas viajan, el resultado lo muestra la animación.
+    final text = view.animating
+        ? ''
+        : match.hasPendingTie
         ? 'Tie pending: $tied cards wait for the next Clash'
         : view.lastResult == null
         ? ''
@@ -314,12 +371,22 @@ class _CreatureSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final match = view.match;
-    final inPlay = match.area(player).creatureInPlay;
-    final stats = match.statsOf(player);
+    final hidden = view.hiddenCardIds;
+    final live = match.area(player).creatureInPlay;
+    // Una Creature que todavía no llegó a la mesa no se muestra.
+    final inPlay = live != null && !hidden.contains(live.creature.id)
+        ? live
+        : null;
+    final items = [
+      for (final item in inPlay?.items ?? <MatchCard<Item>>[])
+        if (!hidden.contains(item.id)) item,
+    ];
+    final stats = inPlay == null ? null : match.statsOf(player);
     final tied = match
         .area(player)
         .tiedCards
         .whereType<MatchCard<Creature>>()
+        .where((card) => !hidden.contains(card.id))
         .toList();
     const peek = 14.0;
 
@@ -327,39 +394,41 @@ class _CreatureSlot extends StatelessWidget {
       width: height * cardAspectRatio + 170,
       child: Row(
         children: [
-          if (inPlay == null && tied.isNotEmpty)
-            _TiedPile(cards: tied, catalog: view.catalog, height: height)
-          else if (inPlay == null)
-            EmptyCardSlot(height: height, label: 'Creature')
-          else
-            SizedBox(
-              height: height,
-              width: height * cardAspectRatio + peek * inPlay.items.length,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  for (var i = 0; i < inPlay.items.length; i++)
-                    Positioned(
-                      left: peek * (inPlay.items.length - i),
-                      top: -peek * (inPlay.items.length - i),
-                      child: CardView(
-                        card: inPlay.items[i].card,
-                        catalog: view.catalog,
-                        height: height,
-                      ),
-                    ),
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    child: CardView(
-                      card: inPlay.creature.card,
-                      catalog: view.catalog,
-                      height: height,
+          ZoneMarker(
+            zone: Zone(player, ZoneKind.creature),
+            child: inPlay == null && tied.isNotEmpty
+                ? _TiedPile(cards: tied, catalog: view.catalog, height: height)
+                : inPlay == null
+                ? EmptyCardSlot(height: height, label: 'Creature')
+                : SizedBox(
+                    height: height,
+                    width: height * cardAspectRatio + peek * items.length,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (var i = 0; i < items.length; i++)
+                          Positioned(
+                            left: peek * (items.length - i),
+                            top: -peek * (items.length - i),
+                            child: CardView(
+                              card: items[i].card,
+                              catalog: view.catalog,
+                              height: height,
+                            ),
+                          ),
+                        Positioned(
+                          left: 0,
+                          top: 0,
+                          child: CardView(
+                            card: inPlay.creature.card,
+                            catalog: view.catalog,
+                            height: height,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
+          ),
           const SizedBox(width: 10),
           if (inPlay != null && stats != null)
             Expanded(
@@ -576,7 +645,7 @@ class _SidePanel extends ConsumerWidget {
               child: ListView(
                 reverse: true,
                 children: [
-                  for (final message in view.log.reversed)
+                  for (final message in view.visibleLog.reversed)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
                       child: Text(
@@ -619,7 +688,7 @@ class _SidePanel extends ConsumerWidget {
     required bool interactive,
   }) {
     final match = view.match;
-    final hand = match.area(player).hand;
+    final hand = _shown(view, match.area(player).hand);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -628,25 +697,30 @@ class _SidePanel extends ConsumerWidget {
           style: const TextStyle(color: _mutedColor, fontSize: 13),
         ),
         const SizedBox(height: 4),
-        SizedBox(
-          height: height + 6,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(top: 3),
-            children: [
-              for (final card in hand)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: CardView(
-                    card: card.card,
-                    catalog: view.catalog,
-                    height: height,
-                    highlighted: interactive && _isPlayable(match, card),
-                    dimmed: interactive && !_isPlayable(match, card),
-                    onTap: interactive ? () => _play(context, ref, card) : null,
+        ZoneMarker(
+          zone: Zone(player, ZoneKind.hand),
+          child: SizedBox(
+            height: height + 6,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(top: 3),
+              children: [
+                for (final card in hand)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: CardView(
+                      card: card.card,
+                      catalog: view.catalog,
+                      height: height,
+                      highlighted: interactive && _isPlayable(match, card),
+                      dimmed: interactive && !_isPlayable(match, card),
+                      onTap: interactive
+                          ? () => _play(context, ref, card)
+                          : null,
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ],

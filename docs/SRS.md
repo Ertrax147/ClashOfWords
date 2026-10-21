@@ -313,9 +313,6 @@ La aplicación deberá presentar una interfaz gráfica orientada a estudiantes d
 
 - Durante una partida 1 vs 1, los dispositivos intercambiarán el estado de la partida directamente entre sí a través de la red local, sin pasar por el servidor ni requerir acceso a internet.
 
-\
--
-
 ## 3.2. Requisitos funcionales
 
 ### RF-01 — Acceso diferenciado por rol
@@ -356,12 +353,11 @@ La aplicación deberá presentar una interfaz gráfica orientada a estudiantes d
 
 ### RF-04 — Ejecución automatizada de partidas
 
-|  |  |
-|----|----|
 | **Campo** | **Especificación** |
+|---|---|
 | Número de requisito | RF-04 |
 | Nombre de requisito | Ejecución automatizada de partidas |
-| Descripción | El sistema debe ejecutar automáticamente las partidas según las reglas del juego físico \[6\]. En cada ronda revelará la carta superior del mazo de cada jugador; si no es una Creature, la agregará a la mano del jugador, visible para ambos, y revelará otra. Al enfrentarse dos Creatures (Clash), determinará el resultado en este orden: 1) gana la de mayor Rarity (Legendary \> Epic \> Rare \> Uncommon \> Common); 2) si tienen igual Rarity y la misma Class, se produce un empate (Tie); 3) si tienen igual Rarity y distinta Class, gana la de mayor Power, y con igual Power se produce un Tie. Un Tie se resuelve con un nuevo Clash cuyo resultado define el anterior. La Creature ganadora irá al Discard Stack de su dueño y la perdedora al Trophy Stack del ganador; los Items equipados acompañarán a su Creature a la pila que corresponda y los Effects irán al Discard Stack de su dueño al terminar su duración. La partida termina cuando un jugador se queda sin cartas en su mazo y gana quien tenga más cartas en su Trophy Stack contando las Creatures y los Items que las acompañan; con igual cantidad, la partida termina en empate. Si un Tie no puede resolverse por falta de cartas, las Creatures empatadas volverán al Discard Stack de su dueño y la partida terminará. |
+| Descripción | El sistema debe ejecutar automáticamente las partidas según las reglas del juego físico [6]. En cada ronda revelará la carta superior del mazo de cada jugador; si no es una Creature, la agregará a la mano del jugador, visible para ambos, y revelará otra. Al enfrentarse dos Creatures (Clash), determinará el resultado en este orden: 1) gana la de mayor Rarity (Legendary > Epic > Rare > Uncommon > Common); 2) si tienen igual Rarity y la misma Class, se produce un empate (Tie); 3) si tienen igual Rarity y distinta Class, gana la de mayor Power, y con igual Power se produce un Tie. Un Tie se resuelve con un nuevo Clash cuyo resultado define el anterior. La Creature ganadora irá al Discard Stack de su dueño y la perdedora al Trophy Stack del ganador; los Items equipados acompañarán a su Creature a la pila que corresponda y los Effects irán al Discard Stack de su dueño al terminar su duración. La partida termina cuando un jugador se queda sin cartas en su mazo y gana quien tenga más cartas en su Trophy Stack contando las Creatures y los Items que las acompañan; con igual cantidad, la partida termina en empate. Si un Tie no puede resolverse por falta de cartas, las Creatures empatadas volverán al Discard Stack de su dueño y la partida terminará.<br>**Nota de diseño (pendiente de validar con la contraparte):** si la Creature ganadora tiene Duration N, permanece en juego N Clashes y solo después va al Discard Stack de su dueño; si pierde antes de completarla, va igualmente al Trophy Stack del ganador. En un Tie, las dos Creatures empatadas se mantienen en juego, aunque les quede Duration. |
 | Tipo | Requisito |
 | Fuente del requisito | Stakeholder |
 | Prioridad | Alta/Esencial |
@@ -428,12 +424,11 @@ La aplicación deberá presentar una interfaz gráfica orientada a estudiantes d
 
 ### RF-10 — Uso de Items, Effects e Initial Effects
 
-|  |  |
-|----|----|
 | **Campo** | **Especificación** |
+|---|---|
 | Número de requisito | RF-10 |
 | Nombre de requisito | Uso de Items, Effects e Initial Effects |
-| Descripción | Durante un Clash, antes de que se determine el ganador, el sistema debe permitir a cada jugador usar las cartas de su mano: equipar un Item a su Creature en juego, solo si comparten al menos una Class y la Creature no tiene otro Item equipado, salvo que una habilidad indique lo contrario; jugar uno o más Effects, que se aplicarán durante la cantidad de Clashes indicada en la carta; y activar las habilidades activas de su Initial Effect. El Initial Effect estará en juego desde el inicio de la partida. Sus habilidades pasivas se aplicarán automáticamente durante toda la partida; sus habilidades activas podrán activarse una vez por partida, en el momento que el jugador elija durante un Clash. El sistema aplicará los modificadores de Power y las habilidades antes de resolver el Clash e impedirá las jugadas que no cumplan estas reglas. |
+| Descripción | Durante un Clash, antes de que se determine el ganador, el sistema debe permitir a cada jugador usar las cartas de su mano: equipar un Item a su Creature en juego, solo si comparten al menos una Class y la Creature no tiene otro Item equipado, salvo que una habilidad indique lo contrario; jugar uno o más Effects, que se aplicarán durante la cantidad de Clashes indicada en la carta; y activar las habilidades activas de su Initial Effect. El Initial Effect estará en juego desde el inicio de la partida. Sus habilidades pasivas se aplicarán automáticamente durante toda la partida; sus habilidades activas podrán activarse una vez por partida, en el momento que el jugador elija durante un Clash. El sistema aplicará los modificadores de Power y las habilidades antes de resolver el Clash e impedirá las jugadas que no cumplan estas reglas.<br>**Nota de diseño (pendiente de validar con la contraparte):** un Item sin Class puede equiparse a cualquier Creature. Cuando un Item o Effect otorga Rarity o Duration a una Creature, se conserva siempre la mayor entre la propia y la otorgada; nunca la empeora. |
 | Tipo | Requisito |
 | Fuente del requisito | Stakeholder |
 | Prioridad | Alta/Esencial |
@@ -533,9 +528,6 @@ La aplicación deberá presentar una interfaz gráfica orientada a estudiantes d
 | Tipo | Requisito |
 | Fuente del requisito | Stakeholder |
 | Prioridad | Media/Deseado |
-
-\
--
 
 ## 3.3. Requisitos no funcionales
 
@@ -673,9 +665,6 @@ El siguiente requisito define las plataformas en que debe funcionar el sistema y
 | Fuente del requisito | Stakeholder |
 | Prioridad | Media/Deseado |
 
-\
--
-
 ## 3.4. Otros requisitos 
 
 Esta sección reúne requisitos de accesibilidad, legales y culturales que no corresponden a las categorías anteriores.
@@ -705,9 +694,6 @@ Los apéndices complementan la especificación mediante una descripción más co
 
 Figura 1. Diagrama de casos de uso de Clash of Words.
 
-\
--
-
 ## 4.2. Especificación de casos de uso
 
 ### CU-01 — Resolver Enfrentamiento
@@ -721,7 +707,7 @@ Figura 1. Diagrama de casos de uso de Clash of Words.
 | Precondiciones | La partida está iniciada y ambos jugadores tienen una Creature revelada en juego. |
 | Suposiciones | Ambos jugadores tuvieron la oportunidad de usar sus Items, Effects e Initial Effects (CU-09). |
 | Frecuencia | Alta |
-| Flujo básico | 1. El sistema aplica los modificadores de Power y las habilidades de los Items, Effects e Initial Effects activos.<br> 2. Compara la Rarity de ambas Creatures (Legendary > Epic > Rare > Uncommon > Common).<br> 3. Declara ganadora a la Creature de mayor Rarity.<br> 4. Mueve la Creature ganadora, junto con su Item, al Discard Stack de su dueño, salvo que una habilidad le otorgue duración adicional.<br> 5. Mueve la Creature perdedora, junto con su Item, al Trophy Stack del ganador.<br> 6. Descuenta un Clash de la duración de los Effects activos y envía al Discard Stack de su dueño los que terminaron. |
+| Flujo básico | 1. El sistema aplica los modificadores de Power y las habilidades de los Items, Effects e Initial Effects activos.<br> 2. Compara la Rarity de ambas Creatures (Legendary > Epic > Rare > Uncommon > Common).<br> 3. Declara ganadora a la Creature de mayor Rarity.<br> 4. Mueve la Creature ganadora, junto con su Item, al Discard Stack de su dueño, salvo que le quede Duration, propia o otorgada por una habilidad; en ese caso permanece en juego hasta agotarla (ver nota de diseño en RF-04).<br> 5. Mueve la Creature perdedora, junto con su Item, al Trophy Stack del ganador.<br> 6. Descuenta un Clash de la duración de los Effects activos y envía al Discard Stack de su dueño los que terminaron. |
 | Flujo(s) alternativo(s) | 2a. Si ambas Creatures tienen igual Rarity y la misma Class, se produce un Tie y se ejecuta el flujo de desempate (T1 a T5).<br> 2b. Si tienen igual Rarity y distinta Class, gana la de mayor Power y el flujo continúa en el paso 4. Si el Power también es igual, se produce un Tie y se ejecuta el flujo de desempate (T1 a T5).<br><em>**Flujo de desempate**</em><br>T1. El sistema mantiene en juego las Creatures empatadas.<br> T2. Revela la carta superior de cada mazo hasta que ambos jugadores tengan una nueva Creature; las cartas reveladas que no sean Creature se agregan a la mano de su dueño.<br> T3. Resuelve el nuevo Clash aplicando los pasos 1 a 3 de este caso.<br> T4. El ganador del nuevo Clash gana también el Clash empatado: las Creatures perdedoras de ambos Clashes, junto con sus Items, van al Trophy Stack del ganador, y las ganadoras van al Discard Stack de su dueño. El flujo continúa en el paso 6.<br> T5. Si el nuevo Clash también termina en Tie, se repite el desempate desde T2.<br>T2a. Si algún jugador no tiene cartas para revelar, las Creatures empatadas vuelven al Discard Stack de su dueño, ningún jugador obtiene trofeo y la partida termina. |
 | Postcondiciones | Las pilas de cartas quedan actualizadas y la partida continúa con la siguiente ronda, o termina si algún mazo quedó vacío. |
 | Casos de uso que se incluyen | Ninguno. |
@@ -865,7 +851,7 @@ Figura 1. Diagrama de casos de uso de Clash of Words.
 | Precondiciones | Hay un Clash en curso y el estudiante tiene cartas en su mano o un Initial Effect con habilidad activa que aún no haya usado |
 | Suposiciones | Ninguna. |
 | Frecuencia | Alta |
-| Flujo básico | 1. El estudiante selecciona un Item de su mano.<br> 2. El sistema verifica que el Item comparta al menos una Class con la Creature en juego y que esta no tenga otro Item equipado.<br> 3. El sistema equipa el Item y aplica su modificador de Power y su habilidad.<br> 4. El estudiante confirma que terminó de usar sus cartas; cuando ambos jugadores confirman, el sistema continúa con Resolver Enfrentamiento (CU-01). |
+| Flujo básico | 1. El estudiante selecciona un Item de su mano.<br> 2. El sistema verifica que el Item comparta al menos una Class con la Creature en juego (un Item sin Class cumple siempre esta condición) y que esta no tenga otro Item equipado.<br> 3. El sistema equipa el Item y aplica su modificador de Power y su habilidad.<br> 4. El estudiante confirma que terminó de usar sus cartas; cuando ambos jugadores confirman, el sistema continúa con Resolver Enfrentamiento (CU-01). |
 | Flujo(s) alternativo(s) | 1a. Si el estudiante selecciona un Effect, el sistema lo aplica durante la cantidad de Clashes indicada en la carta.<br> 1b. Si el estudiante activa su Initial Effect, el sistema aplica su habilidad (una vez por partida).<br> 1c: Si el estudiante ya usó su Initial Effect en la partida, el sistema impide activarlo de nuevo e informa el motivo.<br> 2a. Si el Item no cumple las reglas, el sistema impide equiparlo e informa el motivo. |
 | Postcondiciones | Los modificadores y habilidades quedan aplicados para el Clash en curso. |
 | Casos de uso que se incluyen | Ninguno. |

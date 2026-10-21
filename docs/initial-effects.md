@@ -682,4 +682,3 @@ Casos con "Test = Sí" cuyo test no cubre todo lo que dice el caso. Se completan
 - Botón y selector de carta en la pantalla de partida para las 9 habilidades activas (Honesty necesita reordenar 3 + 3 cartas).
 - Que el rival Fácil use sus habilidades activas, y el rival Normal (RF-15).
 - Validar con Orlando las dudas de arriba.
-- El manual lista 15 Initial Effects y el catálogo trae 16: confirmar la diferencia.

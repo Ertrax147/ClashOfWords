@@ -337,11 +337,13 @@ class _Board extends StatelessWidget {
         .reduce((a, b) => a + b);
     // El resultado del Clash anterior se ve hasta que se revela el siguiente:
     // una vez que empieza un Clash nuevo ya no corresponde.
-    final showResult =
-        match.phase == MatchPhase.reveal || match.phase == MatchPhase.finished;
-    // Mientras las cartas viajan, el resultado lo muestra la animación.
+    final showResult = match.phase == MatchPhase.reveal;
+    // Mientras las cartas viajan, el resultado lo muestra la animación. Al
+    // terminar la partida se explica por qué terminó.
     final text = view.animating
         ? ''
+        : match.phase == MatchPhase.finished
+        ? endReasonText(match)
         : match.hasPendingTie
         ? 'Tie pending: $tied cards wait for the next Clash'
         : view.lastResult == null || !showResult

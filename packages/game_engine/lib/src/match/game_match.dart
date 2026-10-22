@@ -220,6 +220,10 @@ final class GameMatch {
   /// Jugadores que ya usaron la habilidad activa de su Initial Effect.
   final Set<Player> _activeUsed = {};
 
+  /// Jugadores que necesitaban revelar una Creature y no tenían cartas en su
+  /// Deck: por ellos terminó la partida.
+  final Set<Player> _ranOutOfCards = {};
+
   /// Clash con ganador que espera la decisión de Commitment del perdedor.
   ClashWin? _pendingClash;
 
@@ -511,6 +515,11 @@ final class GameMatch {
   bool get hasPendingTie =>
       _areas.values.any((area) => area.tiedCards.isNotEmpty);
 
+  /// Jugadores que se quedaron sin cartas en el Deck cuando tenían que
+  /// revelar una Creature, que es lo que termina la partida. Vacío mientras
+  /// la partida sigue.
+  Set<Player> get ranOutOfCards => Set.unmodifiable(_ranOutOfCards);
+
   /// Resultado de la partida.
   ///
   /// Lanza un [StateError] si la partida no ha terminado.
@@ -800,7 +809,10 @@ final class GameMatch {
         continue;
       }
       final card = area.drawTop();
-      if (card == null) return false;
+      if (card == null) {
+        _ranOutOfCards.add(player);
+        return false;
+      }
       revealed.add(card);
       if (card is MatchCard<Creature>) {
         _enterPlay(player, card);

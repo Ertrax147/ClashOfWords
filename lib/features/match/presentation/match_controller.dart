@@ -239,7 +239,7 @@ class MatchController extends Notifier<MatchViewState?> {
     }
     _update([
       for (final event in events) '${event.caption}.',
-      if (match.phase == MatchPhase.finished) _endMessage(match),
+      if (match.phase == MatchPhase.finished) ..._endMessages(match),
     ], newEvents: events);
   }
 
@@ -302,7 +302,7 @@ class MatchController extends Notifier<MatchViewState?> {
           messages.add('${event.caption}.');
         }
         if (match.phase == MatchPhase.finished) {
-          messages.add(_endMessage(match));
+          messages.addAll(_endMessages(match));
         }
       default:
         return 'This card cannot be played.';
@@ -422,7 +422,9 @@ class MatchController extends Notifier<MatchViewState?> {
         messages.add('${event.caption}.');
       }
     }
-    if (match.phase == MatchPhase.finished) messages.add(_endMessage(match));
+    if (match.phase == MatchPhase.finished) {
+      messages.addAll(_endMessages(match));
+    }
     _update(messages, newEvents: events);
     return null;
   }
@@ -511,6 +513,16 @@ class MatchController extends Notifier<MatchViewState?> {
 
   String _who(Player player) => player == humanPlayer ? 'You' : 'Opponent';
 
+  /// Líneas del registro cuando la partida termina: por qué terminó, qué pasa
+  /// con las cartas de la mesa y el resultado. La última siempre empieza con
+  /// "Match over.".
+  List<String> _endMessages(GameMatch match) => [
+    endReasonText(match),
+    'Creatures still on the table go back to their Discard Stacks without '
+        'a Clash.',
+    _endMessage(match),
+  ];
+
   String _endMessage(GameMatch match) {
     final result = match.result;
     final mine = humanPlayer == Player.one
@@ -526,6 +538,22 @@ class MatchController extends Notifier<MatchViewState?> {
     };
     return 'Match over. $outcome Trophies: $mine - $theirs.';
   }
+}
+
+/// Explica en inglés por qué terminó la partida: un jugador se quedó sin
+/// cartas para revelar la siguiente Creature.
+String endReasonText(GameMatch match) {
+  final ranOut = match.ranOutOfCards;
+  final who = switch ((
+    ranOut.contains(humanPlayer),
+    ranOut.contains(systemPlayer),
+  )) {
+    (true, true) => 'Both of you have',
+    (true, false) => 'You have',
+    (false, true) => 'Your opponent has',
+    (false, false) => 'A player has',
+  };
+  return 'The match ends: $who no cards left to reveal a Creature.';
 }
 
 /// Explica en inglés, para el estudiante, por qué no puede jugar una carta.

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../catalog/catalog_providers.dart';
 import '../../deck_builder/presentation/deck_builder_screen.dart';
+import '../../demo/presentation/demo_setup_screen.dart';
 import '../../match/presentation/match_controller.dart';
 import '../../match/presentation/match_screen.dart';
 
@@ -59,6 +60,23 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       );
                     },
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.slideshow),
+                    label: const Text('Demo mode'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 20,
+                      ),
+                      textStyle: const TextStyle(fontSize: 20),
+                    ),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const DemoSetupScreen(),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   OutlinedButton.icon(

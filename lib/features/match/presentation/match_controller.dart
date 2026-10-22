@@ -165,19 +165,22 @@ class MatchController extends Notifier<MatchViewState?> {
   /// jugadores (mientras no exista el Deck Builder).
   ///
   /// [humanDeck] y [systemDeck] permiten elegir los mazos, y [shuffle] en
-  /// `false` respeta su orden: sirve para los tests.
+  /// `false` respeta su orden: sirve para los tests y la demostración.
+  /// [random] reemplaza al azar de [matchRandomProvider], para repetir una
+  /// partida.
   void startMatch(
     CardCatalog catalog, {
     PlayerDeck? humanDeck,
     PlayerDeck? systemDeck,
     bool shuffle = true,
+    Random? random,
   }) {
-    final random = ref.read(matchRandomProvider);
+    final Random matchRandom = random ?? ref.read(matchRandomProvider);
     final match = GameMatch(
-      playerOne: humanDeck ?? randomDeck(catalog.cards, random),
-      playerTwo: systemDeck ?? randomDeck(catalog.cards, random),
+      playerOne: humanDeck ?? randomDeck(catalog.cards, matchRandom),
+      playerTwo: systemDeck ?? randomDeck(catalog.cards, matchRandom),
       shuffle: shuffle,
-      random: random,
+      random: matchRandom,
     );
     state = MatchViewState(
       match: match,

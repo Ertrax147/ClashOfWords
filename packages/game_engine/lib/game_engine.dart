@@ -21,3 +21,4 @@ export 'src/match/player.dart';
 export 'src/match/player_area.dart';
 export 'src/rules/clash_resolver.dart';
 export 'src/rules/clash_stats.dart';
+export 'src/rules/deck_validator.dart';

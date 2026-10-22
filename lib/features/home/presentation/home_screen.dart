@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../catalog/catalog_providers.dart';
+import '../../deck_builder/presentation/deck_builder_screen.dart';
 import '../../match/presentation/match_controller.dart';
 import '../../match/presentation/match_screen.dart';
 
-/// Pantalla inicial: por ahora solo permite jugar contra el sistema.
+/// Pantalla inicial: permite jugar contra el sistema y armar mazos.
 class HomeScreen extends ConsumerWidget {
   /// Crea la pantalla inicial.
   const HomeScreen({super.key});
@@ -35,26 +36,48 @@ class HomeScreen extends ConsumerWidget {
                 'Could not load the cards: $error',
                 style: const TextStyle(color: Colors.redAccent),
               ),
-              data: (catalog) => FilledButton.icon(
-                icon: const Icon(Icons.smart_toy_outlined),
-                label: const Text('Play vs System (Easy)'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 20,
-                  ),
-                  textStyle: const TextStyle(fontSize: 20),
-                ),
-                onPressed: () {
-                  ref
-                      .read(matchControllerProvider.notifier)
-                      .startMatch(catalog);
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const MatchScreen(),
+              data: (catalog) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton.icon(
+                    icon: const Icon(Icons.smart_toy_outlined),
+                    label: const Text('Play vs System (Easy)'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 20,
+                      ),
+                      textStyle: const TextStyle(fontSize: 20),
                     ),
-                  );
-                },
+                    onPressed: () {
+                      ref
+                          .read(matchControllerProvider.notifier)
+                          .startMatch(catalog);
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const MatchScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.style_outlined),
+                    label: const Text('Deck Builder'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 20,
+                      ),
+                      textStyle: const TextStyle(fontSize: 20),
+                    ),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const DeckBuilderScreen(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

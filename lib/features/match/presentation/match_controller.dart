@@ -27,7 +27,12 @@ class MatchEvent {
     this.cardId,
     this.destination,
     this.from,
+    this.source,
   });
+
+  /// La copia de la carta en la partida, para dibujarla en la Hand mientras
+  /// espera su turno de jugarse (ver [MatchViewState.pendingInHand]).
+  final MatchCard? source;
 
   /// Zona de la que salió la carta, para que el contador de un Deck baje a
   /// medida que se muestran sus cartas, o `null` si no importa.
@@ -114,6 +119,25 @@ class MatchViewState {
     final travelling =
         moves?.moves.where((move) => move.from == deck).length ?? 0;
     return waiting + travelling;
+  }
+
+  /// Cartas que [player] ya tiene en su Hand pero la partida ya jugó: las de
+  /// los avisos de "equipó" o "jugó" que todavía no llegan. Se dibujan en la
+  /// Hand hasta que les toca, para que se vea que pasan por ella. No incluye
+  /// las que siguen esperando a que su revelado llegue a la Hand.
+  List<MatchCard> pendingInHand(Player player) {
+    final hand = Zone(player, ZoneKind.hand);
+    bool stillRevealing(MatchEvent event) => events.any(
+      (other) =>
+          other.cardId == event.cardId && other.from?.kind == ZoneKind.deck,
+    );
+    return [
+      for (final event in events)
+        if (event.from == hand &&
+            event.source != null &&
+            !stillRevealing(event))
+          event.source!,
+    ];
   }
 
   /// Mensajes del registro que se muestran ahora.
@@ -242,12 +266,16 @@ class MatchController extends Notifier<MatchViewState?> {
           EquippedItem(:final card) => MatchEvent(
             card: card.card,
             cardId: card.id,
+            source: card,
+            from: const Zone(systemPlayer, ZoneKind.hand),
             destination: const Zone(systemPlayer, ZoneKind.creature),
             caption: 'Opponent equipped ${card.card.name}',
           ),
           PlayedEffect(:final card) => MatchEvent(
             card: card.card,
             cardId: card.id,
+            source: card,
+            from: const Zone(systemPlayer, ZoneKind.hand),
             destination: const Zone(systemPlayer, ZoneKind.effects),
             caption: 'Opponent played ${card.card.name}',
           ),

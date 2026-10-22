@@ -703,7 +703,10 @@ class _SidePanel extends ConsumerWidget {
     required bool interactive,
   }) {
     final match = view.match;
-    final hand = _shown(view, match.area(player).hand);
+    final hand = [
+      ..._shown(view, match.area(player).hand),
+      ...view.pendingInHand(player),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

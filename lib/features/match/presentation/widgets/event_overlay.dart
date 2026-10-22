@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../../catalog/domain/card_catalog.dart';
 import '../match_controller.dart';
+import '../match_zones.dart';
 import 'card_view.dart';
 import 'zone_keys.dart';
 
@@ -32,6 +33,10 @@ class EventOverlay extends StatefulWidget {
   /// Lo que tarda la carta en llegar a su lugar al cerrarse.
   static const travelTime = Duration(milliseconds: 550);
 
+  /// Pausa antes de mostrar una carta que sale de una Hand, para que se vea
+  /// quieta ahí antes de jugarse.
+  static const handHold = Duration(milliseconds: 800);
+
   /// Evento a mostrar.
   final MatchEvent event;
 
@@ -56,6 +61,9 @@ class _EventOverlayState extends State<EventOverlay>
   );
   Timer? _timer;
 
+  /// Si todavía espera, sin mostrar la carta, a que se vea en su Hand.
+  late bool _holding = widget.event.from?.kind == ZoneKind.hand;
+
   /// Dónde está la carta grande y dónde va, mientras viaja.
   Rect? _from;
   Rect? _to;
@@ -63,6 +71,14 @@ class _EventOverlayState extends State<EventOverlay>
   @override
   void initState() {
     super.initState();
+    _timer = _holding
+        ? Timer(EventOverlay.handHold, _endHold)
+        : Timer(EventOverlay.displayTime, _close);
+  }
+
+  void _endHold() {
+    if (!mounted) return;
+    setState(() => _holding = false);
     _timer = Timer(EventOverlay.displayTime, _close);
   }
 
@@ -118,6 +134,9 @@ class _EventOverlayState extends State<EventOverlay>
 
   @override
   Widget build(BuildContext context) {
+    // Mientras espera, la mesa se ve normal, pero no se puede tocar.
+    if (_holding) return const AbsorbPointer(child: SizedBox.expand());
+
     final from = _from;
     final to = _to;
     if (from != null && to != null) return _travelling(from, to);

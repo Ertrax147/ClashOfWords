@@ -8,20 +8,34 @@ import '../domain/saved_deck.dart';
 
 /// Mazo que el estudiante está armando en el Deck Builder (RF-03).
 ///
-/// Deja agregar cartas sin tope para que la pantalla explique en todo momento
-/// qué regla no se cumple; guardar solo se permite con un mazo válido.
+/// No deja pasar de [DeckRules.maxCopies] copias de una carta ni de
+/// [DeckRules.maxCards] cartas, y explica por qué; lo que falta para llegar
+/// al mínimo se explica en la pantalla, y guardar solo se permite con un mazo
+/// válido.
 class DeckBuilderController extends Notifier<SavedDeck> {
   @override
   SavedDeck build() => SavedDeck(id: _newId());
 
   /// Agrega una copia de [card]. Si es un Initial Effect, pasa a ser el del
   /// mazo en vez de entrar al Deck.
-  void add(GameCard card) {
+  ///
+  /// Devuelve un mensaje en inglés si no se pudo agregar, para mostrárselo al
+  /// estudiante; `null` si se agregó.
+  String? add(GameCard card) {
     if (card is InitialEffect) {
       state = state.copyWith(initialEffectId: card.id);
-      return;
+      return null;
+    }
+    if (state.copiesOf(card.id) >= DeckRules.maxCopies) {
+      return 'You can have at most ${DeckRules.maxCopies} copies of '
+          '${card.name}.';
+    }
+    if (state.cardCount >= DeckRules.maxCards) {
+      return 'Your deck is full: it can have at most ${DeckRules.maxCards} '
+          'cards. Remove one to add another.';
     }
     state = state.withCopies(card.id, state.copiesOf(card.id) + 1);
+    return null;
   }
 
   /// Quita una copia de [card]. Si es un Initial Effect, lo quita del mazo.

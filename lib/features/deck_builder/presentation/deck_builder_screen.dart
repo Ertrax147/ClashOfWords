@@ -86,6 +86,39 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
     return true;
   }
 
+  /// Muestra [message] abajo, sin tapar el panel del mazo (donde están los
+  /// botones de guardar y las reglas).
+  void _showMessage(String message) {
+    final compact = MediaQuery.sizeOf(context).height < _compactHeight;
+    final panelWidth = compact ? 300.0 : 360.0;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.fromLTRB(16, 0, panelWidth + 16, 16),
+        ),
+      );
+  }
+
+  /// Agrega [card] al mazo, o explica por qué no se puede.
+  void _add(GameCard card) {
+    final reason = ref.read(deckBuilderProvider.notifier).add(card);
+    if (reason != null) _showMessage(reason);
+  }
+
+  /// Guarda el mazo, o dice qué regla le falta cumplir si todavía no es
+  /// válido: el botón no se apaga en silencio.
+  void _saveOrExplain(SavedDeck deck, List<DeckIssue> issues) {
+    if (issues.isEmpty) {
+      _save(deck);
+      return;
+    }
+    final more = issues.length > 1 ? ' (${issues.length - 1} more)' : '';
+    _showMessage('Cannot save yet: ${explainDeckIssue(issues.first)}$more');
+  }
+
   Future<void> _save(SavedDeck deck) async {
     final named = deck.name.trim().isEmpty
         ? deck.copyWith(name: 'My deck')
@@ -94,9 +127,7 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
     ref.invalidate(savedDecksProvider);
     if (!mounted) return;
     ref.read(deckBuilderProvider.notifier).load(named);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Saved "${named.name}"')));
+    _showMessage('Saved "${named.name}"');
   }
 
   @override
@@ -166,7 +197,7 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
       FilledButton.icon(
         icon: const Icon(Icons.save),
         label: const Text('Save'),
-        onPressed: issues.isEmpty ? () => _save(deck) : null,
+        onPressed: () => _saveOrExplain(deck, issues),
       ),
     ];
   }
@@ -278,8 +309,7 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
                       card: card,
                       catalog: catalog,
                       count: count,
-                      onAdd: () =>
-                          ref.read(deckBuilderProvider.notifier).add(card),
+                      onAdd: () => _add(card),
                     );
                   },
                 ),
@@ -323,7 +353,7 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
         _DeckRow(
           card: entry.card,
           copies: entry.copies,
-          onAdd: () => notifier.add(entry.card),
+          onAdd: () => _add(entry.card),
           onRemove: () => notifier.remove(entry.card),
         ),
     ];
@@ -357,6 +387,16 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
           value: (count / DeckRules.maxCards).clamp(0, 1),
           color: sizeOk ? Colors.lightGreenAccent : Colors.amberAccent,
         ),
+        // En pantallas bajas la lista de reglas queda al final del panel, así
+        // que la primera que falla se ve aquí, junto al contador.
+        if (compact && issues.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              explainDeckIssue(issues.first),
+              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            ),
+          ),
         if (!compact) ...[
           const SizedBox(height: 4),
           Text(

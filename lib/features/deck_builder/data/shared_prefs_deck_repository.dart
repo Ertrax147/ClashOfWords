@@ -11,6 +11,7 @@ class SharedPrefsDeckRepository implements DeckRepository {
   const SharedPrefsDeckRepository();
 
   static const _key = 'saved_decks';
+  static const _activeKey = 'active_deck_id';
 
   @override
   Future<List<SavedDeck>> loadAll() async {
@@ -45,6 +46,23 @@ class SharedPrefsDeckRepository implements DeckRepository {
       for (final deck in decks)
         if (deck.id != id) deck,
     ]);
+    if (await loadActiveId() == id) await saveActiveId(null);
+  }
+
+  @override
+  Future<String?> loadActiveId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_activeKey);
+  }
+
+  @override
+  Future<void> saveActiveId(String? id) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove(_activeKey);
+    } else {
+      await prefs.setString(_activeKey, id);
+    }
   }
 
   Future<void> _write(List<SavedDeck> decks) async {

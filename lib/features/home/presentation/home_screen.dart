@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:game_engine/game_engine.dart';
 
 import '../../catalog/catalog_providers.dart';
 import '../../catalog/domain/card_catalog.dart';
 import '../../catalog/presentation/catalog_screen.dart';
+import '../../deck_builder/deck_providers.dart';
+import '../../deck_builder/domain/saved_deck.dart';
 import '../../deck_builder/presentation/deck_builder_screen.dart';
 import '../../demo/presentation/demo_setup_screen.dart';
 import '../../match/presentation/match_controller.dart';
@@ -23,6 +26,12 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final catalog = ref.watch(catalogProvider);
     final compact = MediaQuery.sizeOf(context).height < _compactHeight;
+    final decks = ref.watch(savedDecksProvider).value ?? const <SavedDeck>[];
+    final activeId = ref.watch(activeDeckIdProvider).value;
+    SavedDeck? active;
+    for (final deck in decks) {
+      if (deck.id == activeId) active = deck;
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2636),
@@ -50,8 +59,30 @@ class HomeScreen extends ConsumerWidget {
                     'Could not load the cards: $error',
                     style: const TextStyle(color: Colors.redAccent),
                   ),
-                  data: (catalog) =>
-                      _buildButtons(context, ref, catalog, compact),
+                  data: (catalog) {
+                    // Solo se juega con el mazo activo si cumple las reglas.
+                    final playable =
+                        active != null && active.issuesIn(catalog).isEmpty
+                        ? active
+                        : null;
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          playable == null
+                              ? 'No active deck: you will play with a random '
+                                    'deck. Save one in the Deck Builder.'
+                              : 'Active deck: ${playable.name} '
+                                    '(${playable.cardCount} cards, '
+                                    '${playable.initialEffectIn(catalog)!.name})',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        SizedBox(height: compact ? 8 : 16),
+                        _buildButtons(context, ref, catalog, compact, playable),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -66,6 +97,7 @@ class HomeScreen extends ConsumerWidget {
     WidgetRef ref,
     CardCatalog catalog,
     bool compact,
+    SavedDeck? activeDeck,
   ) {
     final padding = EdgeInsets.symmetric(
       horizontal: compact ? 20 : 32,
@@ -82,7 +114,18 @@ class HomeScreen extends ConsumerWidget {
         label: const Text('Play vs System (Easy)'),
         style: FilledButton.styleFrom(padding: padding, textStyle: textStyle),
         onPressed: () {
-          ref.read(matchControllerProvider.notifier).startMatch(catalog);
+          // Con mazo activo juegas con él; el rival siempre usa uno al azar.
+          ref
+              .read(matchControllerProvider.notifier)
+              .startMatch(
+                catalog,
+                humanDeck: activeDeck == null
+                    ? null
+                    : PlayerDeck(
+                        cards: activeDeck.cardsIn(catalog),
+                        initialEffect: activeDeck.initialEffectIn(catalog)!,
+                      ),
+              );
           open(const MatchScreen());
         },
       ),

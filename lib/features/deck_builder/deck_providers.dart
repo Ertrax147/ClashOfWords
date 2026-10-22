@@ -9,6 +9,12 @@ final deckRepositoryProvider = Provider<DeckRepository>(
   (ref) => const SharedPrefsDeckRepository(),
 );
 
+/// Id del mazo activo (el que se usa para jugar), o `null` si no hay. Se
+/// vuelve a leer con `ref.invalidate` al cambiarlo.
+final activeDeckIdProvider = FutureProvider.autoDispose<String?>(
+  (ref) => ref.watch(deckRepositoryProvider).loadActiveId(),
+);
+
 /// Mazos guardados. Se vuelve a leer con `ref.invalidate` después de guardar
 /// o borrar uno.
 final savedDecksProvider = FutureProvider.autoDispose<List<SavedDeck>>(

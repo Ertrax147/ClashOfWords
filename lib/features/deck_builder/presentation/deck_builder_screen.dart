@@ -123,11 +123,24 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
     final named = deck.name.trim().isEmpty
         ? deck.copyWith(name: 'My deck')
         : deck;
-    await ref.read(deckRepositoryProvider).save(named);
-    ref.invalidate(savedDecksProvider);
-    if (!mounted) return;
-    ref.read(deckBuilderProvider.notifier).load(named);
-    _showMessage('Saved "${named.name}"');
+    final repository = ref.read(deckRepositoryProvider);
+    try {
+      await repository.save(named);
+      // El primer mazo guardado pasa a ser el mazo activo, para jugar con él.
+      final becameActive = await repository.loadActiveId() == null;
+      if (becameActive) await repository.saveActiveId(named.id);
+      ref.invalidate(savedDecksProvider);
+      ref.invalidate(activeDeckIdProvider);
+      if (!mounted) return;
+      ref.read(deckBuilderProvider.notifier).load(named);
+      _showMessage(
+        becameActive
+            ? 'Saved "${named.name}" and set as your active deck'
+            : 'Saved "${named.name}"',
+      );
+    } on Object catch (error) {
+      if (mounted) _showMessage('Could not save the deck: $error');
+    }
   }
 
   @override
@@ -606,10 +619,11 @@ class _SavedDecksDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final decks = ref.watch(savedDecksProvider);
+    final activeId = ref.watch(activeDeckIdProvider).value;
     return AlertDialog(
       title: const Text('My decks'),
       content: SizedBox(
-        width: 420,
+        width: 460,
         child: decks.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => Text('Could not load the decks: $error'),
@@ -623,21 +637,49 @@ class _SavedDecksDialog extends ConsumerWidget {
                         title: Text(deck.name.isEmpty ? 'Untitled' : deck.name),
                         subtitle: Text(
                           '${deck.cardCount} cards · '
-                          '${deck.initialEffectIn(catalog)?.name ?? 'No Initial Effect'}',
+                          '${deck.initialEffectIn(catalog)?.name ?? 'No Initial Effect'}'
+                          '${deck.id == activeId ? ' · ACTIVE' : ''}',
                         ),
                         onTap: () {
                           ref.read(deckBuilderProvider.notifier).load(deck);
                           Navigator.of(context).pop();
                         },
-                        trailing: IconButton(
-                          tooltip: 'Delete',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            await ref
-                                .read(deckRepositoryProvider)
-                                .delete(deck.id);
-                            ref.invalidate(savedDecksProvider);
-                          },
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: deck.id == activeId
+                                  ? 'Active deck'
+                                  : 'Use this deck to play',
+                              icon: Icon(
+                                deck.id == activeId
+                                    ? Icons.star
+                                    : Icons.star_border,
+                                color: deck.id == activeId
+                                    ? Colors.amberAccent
+                                    : null,
+                              ),
+                              onPressed: deck.issuesIn(catalog).isNotEmpty
+                                  ? null
+                                  : () async {
+                                      await ref
+                                          .read(deckRepositoryProvider)
+                                          .saveActiveId(deck.id);
+                                      ref.invalidate(activeDeckIdProvider);
+                                    },
+                            ),
+                            IconButton(
+                              tooltip: 'Delete',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                await ref
+                                    .read(deckRepositoryProvider)
+                                    .delete(deck.id);
+                                ref.invalidate(savedDecksProvider);
+                                ref.invalidate(activeDeckIdProvider);
+                              },
+                            ),
+                          ],
                         ),
                       ),
                   ],

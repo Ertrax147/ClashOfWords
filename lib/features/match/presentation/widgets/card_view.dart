@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:game_engine/game_engine.dart';
 
 import '../../../catalog/domain/card_catalog.dart';
+import 'card_detail.dart';
 
 /// Proporción ancho/alto de las cartas impresas.
 const cardAspectRatio = 1000 / 1415;
@@ -45,7 +46,7 @@ class CardView extends StatelessWidget {
     final image = catalog.imageOf(card);
     return GestureDetector(
       onTap: onTap,
-      onLongPress: () => showCardZoom(context, image),
+      onLongPress: () => showCardDetail(context, card, catalog),
       child: Opacity(
         opacity: dimmed ? 0.45 : 1,
         child: Container(
@@ -98,24 +99,4 @@ class EmptyCardSlot extends StatelessWidget {
             ),
     );
   }
-}
-
-/// Muestra la imagen [image] de una carta en grande.
-void showCardZoom(BuildContext context, String image) {
-  showDialog<void>(
-    context: context,
-    builder: (context) => GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        child: AspectRatio(
-          aspectRatio: cardAspectRatio,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.asset(image, fit: BoxFit.contain),
-          ),
-        ),
-      ),
-    ),
-  );
 }

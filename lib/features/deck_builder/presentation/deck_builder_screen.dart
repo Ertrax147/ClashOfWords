@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:game_engine/game_engine.dart';
@@ -362,6 +364,11 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
                 tooltip: 'New deck',
                 icon: const Icon(Icons.note_add_outlined),
                 onPressed: notifier.clear,
+              ),
+              IconButton(
+                tooltip: 'Starter deck',
+                icon: const Icon(Icons.auto_awesome),
+                onPressed: () => notifier.loadStarter(catalog, Random()),
               ),
               const Spacer(),
               FilledButton.icon(

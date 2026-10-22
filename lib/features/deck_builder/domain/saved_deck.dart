@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:game_engine/game_engine.dart';
 
 import '../../catalog/domain/card_catalog.dart';
@@ -14,6 +16,25 @@ const undecidedInitialEffects = {
 /// Si el estudiante puede elegir [effect] como Initial Effect de su mazo.
 bool isSelectableInitialEffect(InitialEffect effect) =>
     !undecidedInitialEffects.contains(effect.kind);
+
+/// Arma un mazo inicial al azar con el [catalog] (ver [starterDeck]), sin los
+/// Initial Effects sin decisión, con el identificador [id].
+SavedDeck starterSavedDeck(CardCatalog catalog, Random random, String id) {
+  final deck = starterDeck([
+    for (final card in catalog.cards)
+      if (card is! InitialEffect || isSelectableInitialEffect(card)) card,
+  ], random);
+  final copies = <String, int>{};
+  for (final card in deck.cards) {
+    copies[card.id] = (copies[card.id] ?? 0) + 1;
+  }
+  return SavedDeck(
+    id: id,
+    name: 'Starter deck',
+    copies: copies,
+    initialEffectId: deck.initialEffect.id,
+  );
+}
 
 /// Mazo armado por el estudiante, tal como se guarda en la tablet (RF-03).
 ///

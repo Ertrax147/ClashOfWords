@@ -1,6 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:game_engine/game_engine.dart';
 
+import '../../catalog/domain/card_catalog.dart';
 import '../domain/saved_deck.dart';
 
 /// Mazo que el estudiante está armando en el Deck Builder (RF-03).
@@ -37,6 +40,11 @@ class DeckBuilderController extends Notifier<SavedDeck> {
 
   /// Sigue armando un mazo que ya estaba guardado.
   void load(SavedDeck deck) => state = deck;
+
+  /// Reemplaza el mazo en construcción por un mazo inicial al azar (ver
+  /// [starterDeck]), que el estudiante puede seguir editando.
+  void loadStarter(CardCatalog catalog, Random random) =>
+      state = starterSavedDeck(catalog, random, _newId());
 
   /// Empieza un mazo vacío.
   void clear() => state = SavedDeck(id: _newId());

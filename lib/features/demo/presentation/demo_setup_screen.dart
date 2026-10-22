@@ -30,7 +30,13 @@ class _DemoSetupScreenState extends ConsumerState<DemoSetupScreen> {
   String? _rivalEffectId;
   bool _fixedOrder = false;
 
-  SavedDeck? _deckWithId(List<SavedDeck> decks, String? id) {
+  SavedDeck? _deckWithId(
+    CardCatalog catalog,
+    List<SavedDeck> decks,
+    String? id,
+    Random random,
+  ) {
+    if (id == starterDeckId) return starterSavedDeck(catalog, random, id!);
     for (final deck in decks) {
       if (deck.id == id) return deck;
     }
@@ -44,16 +50,22 @@ class _DemoSetupScreenState extends ConsumerState<DemoSetupScreen> {
 
   void _start(CardCatalog catalog, List<SavedDeck> decks) {
     final fixed = _fixedOrder;
+    final playerRandom = fixed
+        ? Random(demoPlayerSeed)
+        : ref.read(matchRandomProvider);
+    final rivalRandom = fixed
+        ? Random(demoRivalSeed)
+        : ref.read(matchRandomProvider);
     final playerDeck = buildDemoDeck(
       catalog,
-      fixed ? Random(demoPlayerSeed) : ref.read(matchRandomProvider),
-      deck: _deckWithId(decks, _playerDeckId),
+      playerRandom,
+      deck: _deckWithId(catalog, decks, _playerDeckId, playerRandom),
       initialEffect: _effectWithId(catalog, _playerEffectId),
     );
     final rivalDeck = buildDemoDeck(
       catalog,
-      fixed ? Random(demoRivalSeed) : ref.read(matchRandomProvider),
-      deck: _deckWithId(decks, _rivalDeckId),
+      rivalRandom,
+      deck: _deckWithId(catalog, decks, _rivalDeckId, rivalRandom),
       initialEffect: _effectWithId(catalog, _rivalEffectId),
     );
     ref
@@ -215,10 +227,14 @@ class _SidePicker extends StatelessWidget {
               const SizedBox(height: 12),
               DropdownButton<String?>(
                 isExpanded: true,
-                value: chosenDeck?.id,
+                value: deckId == starterDeckId ? starterDeckId : chosenDeck?.id,
                 dropdownColor: const Color(0xFF111A27),
                 items: [
                   const DropdownMenuItem(child: Text('Random deck')),
+                  const DropdownMenuItem(
+                    value: starterDeckId,
+                    child: Text('Starter deck'),
+                  ),
                   for (final deck in decks)
                     DropdownMenuItem(
                       value: deck.id,

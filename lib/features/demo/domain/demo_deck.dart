@@ -5,6 +5,10 @@ import 'package:game_engine/game_engine.dart';
 import '../../catalog/domain/card_catalog.dart';
 import '../../deck_builder/domain/saved_deck.dart';
 
+/// Identificador que representa un mazo inicial al azar en la lista de mazos
+/// de la demostración.
+const starterDeckId = '__starter__';
+
 /// Semillas del modo demostración con orden fijo: las partidas se repiten
 /// igual mientras se elijan los mismos mazos.
 const demoPlayerSeed = 1;

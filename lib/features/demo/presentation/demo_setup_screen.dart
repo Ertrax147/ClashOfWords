@@ -86,16 +86,32 @@ class _DemoSetupScreenState extends ConsumerState<DemoSetupScreen> {
   Widget build(BuildContext context) {
     final catalogState = ref.watch(catalogProvider);
     final decksState = ref.watch(savedDecksProvider);
+    final compact = MediaQuery.sizeOf(context).height < 600;
+    final catalogLoaded = catalogState.value;
+    final decksLoaded = decksState.value;
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2636),
       appBar: AppBar(
         title: const Text('Demo mode'),
         backgroundColor: const Color(0xFF111A27),
+        toolbarHeight: compact ? 44 : null,
+        // En pantallas bajas el botón de empezar va arriba, donde siempre se
+        // ve, en vez de quedar al final de la pantalla.
+        actions: compact && catalogLoaded != null && decksLoaded != null
+            ? [
+                FilledButton.icon(
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start demo'),
+                  onPressed: () => _start(catalogLoaded, decksLoaded),
+                ),
+                const SizedBox(width: 8),
+              ]
+            : null,
       ),
       body: switch ((catalogState, decksState)) {
         (AsyncData(value: final catalog), AsyncData(value: final decks)) =>
-          _buildSetup(catalog, decks),
+          _buildSetup(catalog, decks, compact),
         (AsyncError(:final error), _) ||
         (_, AsyncError(:final error)) => Center(
           child: Text(
@@ -108,19 +124,31 @@ class _DemoSetupScreenState extends ConsumerState<DemoSetupScreen> {
     );
   }
 
-  Widget _buildSetup(CardCatalog catalog, List<SavedDeck> decks) {
+  Widget _buildSetup(CardCatalog catalog, List<SavedDeck> decks, bool compact) {
     final effects = selectableInitialEffects(catalog);
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(compact ? 12 : 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(
+              width: 520,
+              child: Text(
+                'Set up a practice match: choose the deck and Initial Effect '
+                'of each player, then start. With "Fixed order" the same '
+                'match repeats every time, which is useful to rehearse.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+            SizedBox(height: compact ? 8 : 16),
             Row(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _SidePicker(
+                  compact: compact,
                   title: 'You',
                   catalog: catalog,
                   decks: decks,
@@ -130,8 +158,9 @@ class _DemoSetupScreenState extends ConsumerState<DemoSetupScreen> {
                   onDeck: (id) => setState(() => _playerDeckId = id),
                   onEffect: (id) => setState(() => _playerEffectId = id),
                 ),
-                const SizedBox(width: 24),
+                SizedBox(width: compact ? 12 : 24),
                 _SidePicker(
+                  compact: compact,
                   title: 'Opponent',
                   catalog: catalog,
                   decks: decks,
@@ -156,19 +185,21 @@ class _DemoSetupScreenState extends ConsumerState<DemoSetupScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start demo'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 20,
+            if (!compact) ...[
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Start demo'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 20,
+                  ),
+                  textStyle: const TextStyle(fontSize: 20),
                 ),
-                textStyle: const TextStyle(fontSize: 20),
+                onPressed: () => _start(catalog, decks),
               ),
-              onPressed: () => _start(catalog, decks),
-            ),
+            ],
           ],
         ),
       ),
@@ -179,6 +210,7 @@ class _DemoSetupScreenState extends ConsumerState<DemoSetupScreen> {
 /// Mazo e Initial Effect de un lado de la demostración.
 class _SidePicker extends StatelessWidget {
   const _SidePicker({
+    required this.compact,
     required this.title,
     required this.catalog,
     required this.decks,
@@ -189,6 +221,8 @@ class _SidePicker extends StatelessWidget {
     required this.onEffect,
   });
 
+  /// Si la pantalla es baja: sin la carta grande del Initial Effect.
+  final bool compact;
   final String title;
   final CardCatalog catalog;
   final List<SavedDeck> decks;
@@ -209,11 +243,11 @@ class _SidePicker extends StatelessWidget {
         chosenDeck?.initialEffectIn(catalog);
 
     return SizedBox(
-      width: 248,
+      width: compact ? 230 : 248,
       child: Card(
         color: const Color(0xFF111A27),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(compact ? 10 : 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -267,16 +301,21 @@ class _SidePicker extends StatelessWidget {
                 ],
                 onChanged: onEffect,
               ),
-              const SizedBox(height: 12),
-              Center(
-                child: shownEffect == null
-                    ? const EmptyCardSlot(height: 150, label: 'Initial\nEffect')
-                    : CardView(
-                        card: shownEffect,
-                        catalog: catalog,
-                        height: 150,
-                      ),
-              ),
+              if (!compact) ...[
+                const SizedBox(height: 12),
+                Center(
+                  child: shownEffect == null
+                      ? const EmptyCardSlot(
+                          height: 150,
+                          label: 'Initial\nEffect',
+                        )
+                      : CardView(
+                          card: shownEffect,
+                          catalog: catalog,
+                          height: 150,
+                        ),
+                ),
+              ],
             ],
           ),
         ),

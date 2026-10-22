@@ -33,6 +33,11 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // R8 borra métodos que shared_preferences_android llama por JNI y
+            // en el teléfono los mazos no se guardan ni se leen
+            // (NoSuchMethodError). Sin minimizar, la app funciona igual.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

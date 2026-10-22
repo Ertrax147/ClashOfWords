@@ -100,72 +100,87 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     }.toList()..sort((a, b) => a.name.compareTo(b.name));
     final cards = catalog.cards.where(_passesFilters).toList();
 
+    final compact = MediaQuery.sizeOf(context).height < 600;
+    final filters = <Widget>[
+      SizedBox(
+        width: 220,
+        child: TextField(
+          onChanged: (value) => setState(() => _query = value),
+          decoration: const InputDecoration(
+            hintText: 'Search by name',
+            prefixIcon: Icon(Icons.search),
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ),
+      ChoiceChip(
+        label: const Text('All'),
+        selected: _type == null,
+        onSelected: (_) => setState(() => _type = null),
+      ),
+      for (final type in _CardType.values)
+        ChoiceChip(
+          label: Text(type.label),
+          selected: _type == type,
+          onSelected: (_) => setState(() => _type = type),
+        ),
+      DropdownButton<CardClass?>(
+        value: _class,
+        hint: const Text('Class'),
+        dropdownColor: const Color(0xFF111A27),
+        items: [
+          const DropdownMenuItem(child: Text('Any Class')),
+          for (final cardClass in classes)
+            DropdownMenuItem(value: cardClass, child: Text(cardClass.name)),
+        ],
+        onChanged: (value) => setState(() => _class = value),
+      ),
+      DropdownButton<Rarity?>(
+        value: _rarity,
+        hint: const Text('Rarity'),
+        dropdownColor: const Color(0xFF111A27),
+        items: [
+          const DropdownMenuItem(child: Text('Any Rarity')),
+          for (final rarity in Rarity.values)
+            DropdownMenuItem(
+              value: rarity,
+              child: Text(_capitalized(rarity.name)),
+            ),
+        ],
+        onChanged: (value) => setState(() => _rarity = value),
+      ),
+      Text(
+        '${cards.length} of ${catalog.cards.length} cards',
+        style: const TextStyle(color: Colors.white54),
+      ),
+    ];
+
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 220,
-                child: TextField(
-                  onChanged: (value) => setState(() => _query = value),
-                  decoration: const InputDecoration(
-                    hintText: 'Search by name',
-                    prefixIcon: Icon(Icons.search),
-                    isDense: true,
-                    border: OutlineInputBorder(),
+          padding: EdgeInsets.all(compact ? 6 : 12),
+          // En pantallas bajas los filtros ocupan una sola fila que se
+          // desplaza, para dejar espacio a las cartas.
+          child: compact
+              ? SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final filter in filters)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: filter,
+                        ),
+                    ],
                   ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: filters,
                 ),
-              ),
-              ChoiceChip(
-                label: const Text('All'),
-                selected: _type == null,
-                onSelected: (_) => setState(() => _type = null),
-              ),
-              for (final type in _CardType.values)
-                ChoiceChip(
-                  label: Text(type.label),
-                  selected: _type == type,
-                  onSelected: (_) => setState(() => _type = type),
-                ),
-              DropdownButton<CardClass?>(
-                value: _class,
-                hint: const Text('Class'),
-                dropdownColor: const Color(0xFF111A27),
-                items: [
-                  const DropdownMenuItem(child: Text('Any Class')),
-                  for (final cardClass in classes)
-                    DropdownMenuItem(
-                      value: cardClass,
-                      child: Text(cardClass.name),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _class = value),
-              ),
-              DropdownButton<Rarity?>(
-                value: _rarity,
-                hint: const Text('Rarity'),
-                dropdownColor: const Color(0xFF111A27),
-                items: [
-                  const DropdownMenuItem(child: Text('Any Rarity')),
-                  for (final rarity in Rarity.values)
-                    DropdownMenuItem(
-                      value: rarity,
-                      child: Text(_capitalized(rarity.name)),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _rarity = value),
-              ),
-              Text(
-                '${cards.length} of ${catalog.cards.length} cards',
-                style: const TextStyle(color: Colors.white54),
-              ),
-            ],
-          ),
         ),
         Expanded(
           child: cards.isEmpty

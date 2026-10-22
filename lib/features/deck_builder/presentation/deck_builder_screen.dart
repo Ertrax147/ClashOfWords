@@ -42,6 +42,10 @@ bool _hasClass(GameCard card, CardClass cardClass) => switch (card) {
   _ => false,
 };
 
+/// Alto de pantalla por debajo del cual el Deck Builder se muestra compacto:
+/// los teléfonos en horizontal miden menos de 450 px de alto.
+const _compactHeight = 600.0;
+
 String _capitalized(String text) =>
     text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
 
@@ -101,12 +105,20 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
       if (_nameController.text != deck.name) _nameController.text = deck.name;
     });
     final catalogState = ref.watch(catalogProvider);
+    final compact = MediaQuery.sizeOf(context).height < _compactHeight;
+    final loaded = catalogState.value;
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2636),
       appBar: AppBar(
         title: const Text('Deck Builder'),
         backgroundColor: const Color(0xFF111A27),
+        toolbarHeight: compact ? 44 : null,
+        // En pantallas bajas los botones del mazo van arriba, donde no
+        // quitan espacio al panel.
+        actions: compact && loaded != null
+            ? [..._deckButtons(loaded, compact: true), const SizedBox(width: 8)]
+            : null,
       ),
       body: catalogState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -118,15 +130,48 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
         ),
         data: (catalog) => Row(
           children: [
-            Expanded(child: _buildCatalogPanel(catalog)),
-            _buildDeckPanel(catalog),
+            Expanded(child: _buildCatalogPanel(catalog, compact)),
+            _buildDeckPanel(catalog, compact),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCatalogPanel(CardCatalog catalog) {
+  /// Botones del mazo: Mis mazos, Nuevo, Mazo inicial y Guardar.
+  List<Widget> _deckButtons(CardCatalog catalog, {required bool compact}) {
+    final deck = ref.watch(deckBuilderProvider);
+    final notifier = ref.read(deckBuilderProvider.notifier);
+    final issues = deck.issuesIn(catalog);
+    return [
+      IconButton(
+        tooltip: 'My decks',
+        icon: const Icon(Icons.folder_open),
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (_) => _SavedDecksDialog(catalog: catalog),
+        ),
+      ),
+      IconButton(
+        tooltip: 'New deck',
+        icon: const Icon(Icons.note_add_outlined),
+        onPressed: notifier.clear,
+      ),
+      IconButton(
+        tooltip: 'Starter deck',
+        icon: const Icon(Icons.auto_awesome),
+        onPressed: () => notifier.loadStarter(catalog, Random()),
+      ),
+      if (!compact) const Spacer(),
+      FilledButton.icon(
+        icon: const Icon(Icons.save),
+        label: const Text('Save'),
+        onPressed: issues.isEmpty ? () => _save(deck) : null,
+      ),
+    ];
+  }
+
+  Widget _buildCatalogPanel(CardCatalog catalog, bool compact) {
     final deck = ref.watch(deckBuilderProvider);
     final classes = {
       for (final card in catalog.cards)
@@ -138,60 +183,74 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
     }.toList()..sort((a, b) => a.name.compareTo(b.name));
     final cards = catalog.cards.where(_passesFilters).toList();
 
+    final filters = <Widget>[
+      ChoiceChip(
+        label: const Text('All'),
+        selected: _type == null,
+        onSelected: (_) => setState(() => _type = null),
+      ),
+      for (final type in _CardType.values)
+        ChoiceChip(
+          label: Text(type.label),
+          selected: _type == type,
+          onSelected: (_) => setState(() => _type = type),
+        ),
+      DropdownButton<CardClass?>(
+        value: _class,
+        hint: const Text('Class'),
+        dropdownColor: const Color(0xFF111A27),
+        items: [
+          const DropdownMenuItem(child: Text('Any Class')),
+          for (final cardClass in classes)
+            DropdownMenuItem(value: cardClass, child: Text(cardClass.name)),
+        ],
+        onChanged: (value) => setState(() => _class = value),
+      ),
+      DropdownButton<Rarity?>(
+        value: _rarity,
+        hint: const Text('Rarity'),
+        dropdownColor: const Color(0xFF111A27),
+        items: [
+          const DropdownMenuItem(child: Text('Any Rarity')),
+          for (final rarity in Rarity.values)
+            DropdownMenuItem(
+              value: rarity,
+              child: Text(_capitalized(rarity.name)),
+            ),
+        ],
+        onChanged: (value) => setState(() => _rarity = value),
+      ),
+      Text(
+        '${cards.length} cards',
+        style: const TextStyle(color: Colors.white54),
+      ),
+    ];
+
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              ChoiceChip(
-                label: const Text('All'),
-                selected: _type == null,
-                onSelected: (_) => setState(() => _type = null),
-              ),
-              for (final type in _CardType.values)
-                ChoiceChip(
-                  label: Text(type.label),
-                  selected: _type == type,
-                  onSelected: (_) => setState(() => _type = type),
+          padding: EdgeInsets.all(compact ? 6 : 12),
+          // En pantallas bajas los filtros ocupan una sola fila que se
+          // desplaza, para dejar espacio a las cartas.
+          child: compact
+              ? SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final filter in filters)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: filter,
+                        ),
+                    ],
+                  ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: filters,
                 ),
-              DropdownButton<CardClass?>(
-                value: _class,
-                hint: const Text('Class'),
-                dropdownColor: const Color(0xFF111A27),
-                items: [
-                  const DropdownMenuItem(child: Text('Any Class')),
-                  for (final cardClass in classes)
-                    DropdownMenuItem(
-                      value: cardClass,
-                      child: Text(cardClass.name),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _class = value),
-              ),
-              DropdownButton<Rarity?>(
-                value: _rarity,
-                hint: const Text('Rarity'),
-                dropdownColor: const Color(0xFF111A27),
-                items: [
-                  const DropdownMenuItem(child: Text('Any Rarity')),
-                  for (final rarity in Rarity.values)
-                    DropdownMenuItem(
-                      value: rarity,
-                      child: Text(_capitalized(rarity.name)),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _rarity = value),
-              ),
-              Text(
-                '${cards.length} cards',
-                style: const TextStyle(color: Colors.white54),
-              ),
-            ],
-          ),
         ),
         Expanded(
           child: cards.isEmpty
@@ -229,7 +288,7 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
     );
   }
 
-  Widget _buildDeckPanel(CardCatalog catalog) {
+  Widget _buildDeckPanel(CardCatalog catalog, bool compact) {
     final deck = ref.watch(deckBuilderProvider);
     final notifier = ref.read(deckBuilderProvider.notifier);
     final issues = deck.issuesIn(catalog);
@@ -246,74 +305,118 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
           return byType != 0 ? byType : a.card.name.compareTo(b.card.name);
         });
 
+    // En pantallas bajas todo el panel se desplaza, con la lista de cartas
+    // incluida, en vez de dejar sin espacio a lo de abajo.
+    Widget scroll(List<Widget> children) => compact
+        ? SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          );
+    final rows = [
+      for (final entry in entries)
+        _DeckRow(
+          card: entry.card,
+          copies: entry.copies,
+          onAdd: () => notifier.add(entry.card),
+          onRemove: () => notifier.remove(entry.card),
+        ),
+    ];
+    final slotHeight = compact ? 56.0 : 88.0;
+
     return Container(
-      width: 360,
+      width: compact ? 300 : 360,
       color: const Color(0xFF111A27),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _nameController,
-            onChanged: notifier.rename,
-            decoration: const InputDecoration(
-              labelText: 'Deck name',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
+      padding: EdgeInsets.all(compact ? 8 : 16),
+      child: scroll([
+        TextField(
+          controller: _nameController,
+          onChanged: notifier.rename,
+          decoration: const InputDecoration(
+            labelText: 'Deck name',
+            border: OutlineInputBorder(),
+            isDense: true,
           ),
-          const SizedBox(height: 12),
-          Text(
-            '$count / ${DeckRules.maxCards} cards',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: sizeOk ? Colors.lightGreenAccent : Colors.amberAccent,
-            ),
-          ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-            value: (count / DeckRules.maxCards).clamp(0, 1),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '$count / ${DeckRules.maxCards} cards',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
             color: sizeOk ? Colors.lightGreenAccent : Colors.amberAccent,
           ),
+        ),
+        const SizedBox(height: 4),
+        LinearProgressIndicator(
+          value: (count / DeckRules.maxCards).clamp(0, 1),
+          color: sizeOk ? Colors.lightGreenAccent : Colors.amberAccent,
+        ),
+        if (!compact) ...[
           const SizedBox(height: 4),
           Text(
-            'From ${DeckRules.minCards} to ${DeckRules.maxCards} cards, up to '
-            '${DeckRules.maxCopies} copies of each, plus 1 Initial Effect.',
+            'From ${DeckRules.minCards} to ${DeckRules.maxCards} cards, up '
+            'to ${DeckRules.maxCopies} copies of each, plus 1 Initial '
+            'Effect.',
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              initialEffect == null
-                  ? const EmptyCardSlot(height: 88, label: 'Initial\nEffect')
-                  : CardView(card: initialEffect, catalog: catalog, height: 88),
-              const SizedBox(width: 12),
-              Expanded(
-                child: initialEffect == null
-                    ? const Text(
-                        'Pick one with the Initial Effects filter.',
-                        style: TextStyle(color: Colors.white70),
-                      )
-                    : Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              initialEffect.name,
-                              style: const TextStyle(color: Colors.white),
-                            ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            initialEffect == null
+                ? EmptyCardSlot(
+                    height: slotHeight,
+                    label: compact ? null : 'Initial\nEffect',
+                  )
+                : CardView(
+                    card: initialEffect,
+                    catalog: catalog,
+                    height: slotHeight,
+                  ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: initialEffect == null
+                  ? const Text(
+                      'Pick one with the Initial Effects filter.',
+                      style: TextStyle(color: Colors.white70),
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            initialEffect.name,
+                            style: const TextStyle(color: Colors.white),
                           ),
-                          IconButton(
-                            tooltip: 'Remove Initial Effect',
-                            icon: const Icon(Icons.close),
-                            onPressed: () => notifier.remove(initialEffect),
-                          ),
-                        ],
-                      ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove Initial Effect',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => notifier.remove(initialEffect),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+        const Divider(height: 24),
+        if (compact)
+          if (entries.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Tap a card to add it.',
+                style: TextStyle(color: Colors.white54),
               ),
-            ],
-          ),
-          const Divider(height: 24),
+            )
+          else
+            ...rows
+        else
           Expanded(
             child: entries.isEmpty
                 ? const Center(
@@ -322,64 +425,28 @@ class _DeckBuilderScreenState extends ConsumerState<DeckBuilderScreen> {
                       style: TextStyle(color: Colors.white54),
                     ),
                   )
-                : ListView(
-                    children: [
-                      for (final entry in entries)
-                        _DeckRow(
-                          card: entry.card,
-                          copies: entry.copies,
-                          onAdd: () => notifier.add(entry.card),
-                          onRemove: () => notifier.remove(entry.card),
-                        ),
-                    ],
-                  ),
+                : ListView(children: rows),
           ),
-          const Divider(height: 24),
-          if (issues.isEmpty)
-            const Text(
-              'This deck follows all the rules.',
-              style: TextStyle(color: Colors.lightGreenAccent),
-            )
-          else
-            for (final issue in issues)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  explainDeckIssue(issue),
-                  style: const TextStyle(color: Colors.redAccent),
-                ),
+        const Divider(height: 24),
+        if (issues.isEmpty)
+          const Text(
+            'This deck follows all the rules.',
+            style: TextStyle(color: Colors.lightGreenAccent),
+          )
+        else
+          for (final issue in issues)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                explainDeckIssue(issue),
+                style: const TextStyle(color: Colors.redAccent),
               ),
+            ),
+        if (!compact) ...[
           const SizedBox(height: 8),
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'My decks',
-                icon: const Icon(Icons.folder_open),
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _SavedDecksDialog(catalog: catalog),
-                ),
-              ),
-              IconButton(
-                tooltip: 'New deck',
-                icon: const Icon(Icons.note_add_outlined),
-                onPressed: notifier.clear,
-              ),
-              IconButton(
-                tooltip: 'Starter deck',
-                icon: const Icon(Icons.auto_awesome),
-                onPressed: () => notifier.loadStarter(catalog, Random()),
-              ),
-              const Spacer(),
-              FilledButton.icon(
-                icon: const Icon(Icons.save),
-                label: const Text('Save'),
-                onPressed: issues.isEmpty ? () => _save(deck) : null,
-              ),
-            ],
-          ),
+          Row(children: _deckButtons(catalog, compact: false)),
         ],
-      ),
+      ]),
     );
   }
 

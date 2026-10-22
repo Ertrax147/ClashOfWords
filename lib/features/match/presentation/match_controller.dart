@@ -158,6 +158,13 @@ class MatchController extends Notifier<MatchViewState?> {
 
   int _lastBatchId = 0;
 
+  /// Cuántos Clashes se han jugado en la partida, para numerar el registro.
+  int _clashNumber = 0;
+
+  /// Las Creatures y sus valores en el Clash que se está resolviendo, para
+  /// explicarlo en el registro cuando las cartas ya cambiaron de zona.
+  _ClashSnapshot? _clashSnapshot;
+
   @override
   MatchViewState? build() => null;
 
@@ -194,6 +201,8 @@ class MatchController extends Notifier<MatchViewState?> {
       revision: 0,
     );
     _zones = snapshotZones(match);
+    _clashNumber = 0;
+    _clashSnapshot = null;
   }
 
   /// Revela las Creatures del próximo Clash. Si la partida sigue, el
@@ -316,6 +325,7 @@ class MatchController extends Notifier<MatchViewState?> {
       for (final player in Player.values)
         player: match.area(player).discardStack.length,
     };
+    _clashSnapshot = _ClashSnapshot.of(match, ++_clashNumber);
 
     match.resolveClash();
     if (match.phase == MatchPhase.afterClash) {
@@ -430,7 +440,15 @@ class MatchController extends Notifier<MatchViewState?> {
     MatchCard? movedByCommitment,
   }) {
     final result = match.lastClashResult!;
-    final messages = [...first, describe(result)];
+    final snapshot = _clashSnapshot;
+    final messages = [
+      ...first,
+      if (snapshot != null) ...[
+        snapshot.header,
+        explainClash(result, snapshot.first.stats, snapshot.second.stats),
+      ],
+      describe(result),
+    ];
     if (result case ClashWin(:final winner)) {
       final loser = winner == ClashSide.first ? Player.two : Player.one;
       if (match.hasPassive(loser, InitialEffectKind.tolerance)) {
@@ -543,6 +561,85 @@ String describe(ClashResult result) => switch (result) {
     "Tie! ${reason == TieReason.sameClass ? 'Same Class' : 'Same Power'}. "
         'The next Clash decides it.',
 };
+
+/// Explica en inglés, para el estudiante, qué regla decidió el Clash entre
+/// las Creatures con los valores [first] y [second] (RF-04, CU-01).
+String explainClash(ClashResult result, ClashStats first, ClashStats second) {
+  String rarity(ClashStats stats) => _capitalize(stats.rarity.name);
+  switch (result) {
+    case ClashWin(:final winner, :final reason):
+      final won = winner == ClashSide.first ? first : second;
+      final lost = winner == ClashSide.first ? second : first;
+      return switch (reason) {
+        WinReason.rarity =>
+          '${rarity(won)} beats ${rarity(lost)}: the higher Rarity wins.',
+        WinReason.power =>
+          'Both are ${rarity(won)} with different Classes, so Power decides: '
+              '${won.power} beats ${lost.power}.',
+        WinReason.commitment => 'Commitment turns the lost Clash into a win.',
+      };
+    case ClashTie(:final reason):
+      final shared = first.classes
+          .where(second.classes.contains)
+          .map((c) => c.name)
+          .join(', ');
+      return switch (reason) {
+        TieReason.sameClass =>
+          'Both are ${rarity(first)} and share the Class $shared: '
+              'it is a Tie, whatever the Power.',
+        TieReason.samePower =>
+          'Both are ${rarity(first)} with different Classes and the same '
+              'Power (${first.power}): it is a Tie.',
+      };
+  }
+}
+
+String _capitalize(String text) =>
+    text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
+
+/// Si [message] del registro es la línea que abre un Clash, para destacarla.
+bool isClashHeader(String message) => message.startsWith('Clash ');
+
+/// Una Creature enfrentada en un Clash, con sus valores en ese momento.
+class _ClashSide {
+  const _ClashSide(this.name, this.stats);
+
+  final String name;
+  final ClashStats stats;
+
+  String get label =>
+      '$name (${_capitalize(stats.rarity.name)} · Power ${stats.power} · '
+      '${stats.classes.map((c) => c.name).join(', ')})';
+}
+
+/// Las dos Creatures de un Clash antes de resolverlo.
+class _ClashSnapshot {
+  const _ClashSnapshot(this.number, this.first, this.second);
+
+  /// Toma las Creatures en la mesa de [match], o `null` si falta alguna.
+  static _ClashSnapshot? of(GameMatch match, int number) {
+    _ClashSide? sideOf(Player player) {
+      final inPlay = match.area(player).creatureInPlay;
+      final stats = match.statsOf(player);
+      if (inPlay == null || stats == null) return null;
+      return _ClashSide(inPlay.creature.card.name, stats);
+    }
+
+    final first = sideOf(humanPlayer);
+    final second = sideOf(systemPlayer);
+    return first == null || second == null
+        ? null
+        : _ClashSnapshot(number, first, second);
+  }
+
+  final int number;
+  final _ClashSide first;
+  final _ClashSide second;
+
+  /// Línea del registro que dice qué Creatures se enfrentaron.
+  String get header =>
+      'Clash $number · You: ${first.label} vs Opponent: ${second.label}';
+}
 
 /// Partida en curso de la pantalla de juego.
 final matchControllerProvider =

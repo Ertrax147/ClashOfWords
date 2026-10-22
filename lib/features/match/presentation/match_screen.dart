@@ -647,12 +647,18 @@ class _SidePanel extends ConsumerWidget {
                 children: [
                   for (final message in view.visibleLog.reversed)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      padding: EdgeInsets.only(
+                        top: isClashHeader(message) ? 8 : 2,
+                        bottom: 2,
+                      ),
                       child: Text(
                         message,
                         style: TextStyle(
                           color: _textColor,
                           fontSize: compact ? 12 : 13,
+                          fontWeight: isClashHeader(message)
+                              ? FontWeight.bold
+                              : null,
                         ),
                       ),
                     ),

@@ -26,7 +26,12 @@ class MatchEvent {
     required this.caption,
     this.cardId,
     this.destination,
+    this.from,
   });
+
+  /// Zona de la que salió la carta, para que el contador de un Deck baje a
+  /// medida que se muestran sus cartas, o `null` si no importa.
+  final Zone? from;
 
   /// Carta que se muestra en grande.
   final GameCard card;
@@ -98,6 +103,18 @@ class MatchViewState {
       if (event.cardId != null) event.cardId!,
     for (final move in moves?.moves ?? <MatchMove>[]) move.card.id,
   };
+
+  /// Cartas que ya salieron del Deck de [player] en la partida pero la
+  /// pantalla todavía no muestra: las de los avisos pendientes (sin contar el
+  /// que se ve ahora, que ya salió) y las que viajan. Se suman al largo real
+  /// del Deck para que el contador baje a medida que salen las cartas.
+  int pendingFromDeck(Player player) {
+    final deck = Zone(player, ZoneKind.deck);
+    final waiting = events.skip(1).where((event) => event.from == deck).length;
+    final travelling =
+        moves?.moves.where((move) => move.from == deck).length ?? 0;
+    return waiting + travelling;
+  }
 
   /// Mensajes del registro que se muestran ahora.
   List<String> get visibleLog {
@@ -265,6 +282,7 @@ class MatchController extends Notifier<MatchViewState?> {
     return MatchEvent(
       card: card.card,
       cardId: card.id,
+      from: Zone(player, ZoneKind.deck),
       destination: Zone(
         player,
         card is MatchCard<Creature> ? ZoneKind.creature : ZoneKind.hand,
@@ -411,6 +429,7 @@ class MatchController extends Notifier<MatchViewState?> {
         MatchEvent(
           card: stolen.card,
           cardId: stolen.id,
+          from: const Zone(systemPlayer, ZoneKind.deck),
           destination: const Zone(humanPlayer, ZoneKind.trophy),
           caption: "You took ${stolen.card.name} from your opponent's Deck",
         ),

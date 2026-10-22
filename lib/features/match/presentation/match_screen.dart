@@ -245,7 +245,10 @@ class _Board extends StatelessWidget {
         _cell(
           ZoneMarker(
             zone: Zone(player, ZoneKind.deck),
-            child: DeckPile(count: area.deck.length, height: cardHeight),
+            child: DeckPile(
+              count: area.deck.length + view.pendingFromDeck(player),
+              height: cardHeight,
+            ),
           ),
         ),
         _CreatureSlot(view: view, player: player, height: cardHeight),
